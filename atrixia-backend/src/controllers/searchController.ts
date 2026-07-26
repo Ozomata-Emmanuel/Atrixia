@@ -24,8 +24,12 @@ export const createSearch = async (req: AuthRequest, res: Response, next: NextFu
 
     res.status(200).json({
       success: true,
-      data: searchRecord.results,
-      searchId: searchRecord.id
+      data: {
+        searchId: searchRecord.id,
+        query: searchRecord.query,
+        filters: searchRecord.filters,
+        results: searchRecord.results
+      }
     });
   } catch (error) {
     next(error);
@@ -46,13 +50,10 @@ export const getSearch = async (req: AuthRequest, res: Response, next: NextFunct
 
     const searchRecord = await getSearchById(userId, searchId);
 
-    if (!searchRecord) {
-      throw new AppError('Search not found', 404);
-    }
-
     res.status(200).json({
       success: true,
       data: {
+        id: searchRecord.id,
         query: searchRecord.query,
         filters: searchRecord.filters,
         results: searchRecord.results,
@@ -71,11 +72,14 @@ export const getHistory = async (req: AuthRequest, res: Response, next: NextFunc
       throw new AppError('Unauthorized', 401);
     }
 
-    const history = await getSearchHistory(userId);
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    const data = await getSearchHistory(userId, limit, offset);
 
     res.status(200).json({
       success: true,
-      data: history
+      data
     });
   } catch (error) {
     next(error);

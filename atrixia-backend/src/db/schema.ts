@@ -2,8 +2,12 @@ import { pgTable, uuid, text, varchar, timestamp, jsonb, numeric, boolean } from
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
+  fullName: varchar('full_name').notNull(),
   email: varchar('email').notNull().unique(),
   passwordHash: varchar('password_hash').notNull(),
+  emailVerified: boolean('email_verified').default(false),
+  verificationCode: varchar('verification_code', { length: 6 }),
+  verificationCodeExpiresAt: timestamp('verification_code_expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
