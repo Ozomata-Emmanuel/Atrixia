@@ -1,0 +1,14 @@
+import { Router } from 'express';
+import { createSearch, getSearch, getHistory } from '../controllers/searchController';
+import { authenticateToken } from '../middleware/authMiddleware';
+
+const router = Router();
+
+// Protect all search routes
+router.use(authenticateToken);
+
+router.post('/', createSearch);
+router.get('/history', getHistory);
+router.get('/:searchId', getSearch);
+
+export default router;
