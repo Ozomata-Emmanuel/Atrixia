@@ -43,7 +43,7 @@ export const getSearch = async (req: AuthRequest, res: Response, next: NextFunct
       throw new AppError('Unauthorized', 401);
     }
 
-    const searchId = req.params.searchId;
+    const searchId = req.params.searchId as string;
     if (!searchId) {
       throw new AppError('Invalid search ID format', 400);
     }
