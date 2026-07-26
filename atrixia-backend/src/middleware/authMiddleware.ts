@@ -7,7 +7,7 @@ dotenv.config();
 
 export interface AuthRequest extends Request {
   user?: {
-    userId: number;
+    userId: string;
     email: string;
   };
 }
@@ -21,7 +21,7 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret') as { userId: number, email: string };
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret') as { userId: string, email: string };
     req.user = decoded;
     next();
   } catch (err) {

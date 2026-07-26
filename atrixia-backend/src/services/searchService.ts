@@ -3,7 +3,7 @@ import { db } from '../db';
 import { searches } from '../db/schema';
 import { callAiService } from './aiService';
 
-export const executeSearch = async (userId: number, query: string, filters: Array<{ label: string, value: string }>) => {
+export const executeSearch = async (userId: string, query: string, filters: Array<{ label: string, value: string }>) => {
   // 1. Call AI service
   const results = await callAiService(query, filters);
 
@@ -18,7 +18,7 @@ export const executeSearch = async (userId: number, query: string, filters: Arra
   return newSearch[0];
 };
 
-export const getSearchById = async (userId: number, searchId: number) => {
+export const getSearchById = async (userId: string, searchId: string) => {
   const searchResult = await db.select()
     .from(searches)
     .where(eq(searches.id, searchId))
@@ -31,7 +31,7 @@ export const getSearchById = async (userId: number, searchId: number) => {
   return searchResult[0];
 };
 
-export const getSearchHistory = async (userId: number) => {
+export const getSearchHistory = async (userId: string) => {
   const history = await db.select({
     id: searches.id,
     query: searches.query,

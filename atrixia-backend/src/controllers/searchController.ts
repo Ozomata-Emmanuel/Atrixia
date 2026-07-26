@@ -39,8 +39,8 @@ export const getSearch = async (req: AuthRequest, res: Response, next: NextFunct
       throw new AppError('Unauthorized', 401);
     }
 
-    const searchId = parseInt(req.params.searchId, 10);
-    if (isNaN(searchId)) {
+    const searchId = req.params.searchId;
+    if (!searchId) {
       throw new AppError('Invalid search ID format', 400);
     }
 
