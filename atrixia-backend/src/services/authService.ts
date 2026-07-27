@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { AppError } from '../utils/error';
 import { generateVerificationCode, isCodeExpired, sendVerificationEmail } from '../utils/verification';
+import { emailTemplate, sendEmail } from '../utils/mail';
 
 export const registerUser = async (fullName: string, email: string, password: string) => {
   const existingUser = await db.select().from(users).where(eq(users.email, email)).limit(1);
@@ -30,10 +31,16 @@ export const registerUser = async (fullName: string, email: string, password: st
     fullName: users.fullName,
     emailVerified: users.emailVerified
   });
-
+const firstName = fullName.split(' ')[0];
   const user = newUser[0];
   
   await sendVerificationEmail(email, verificationCode);
+   await sendEmail({
+     email: email,
+     subject: "Email Verification",
+     text: `Your verification code is: ${verificationCode}`,
+     html: emailTemplate({ firstName: firstName || "User", code: verificationCode }),
+   });
 
   return user;
 };
