@@ -3,6 +3,7 @@ import { ConversationContext } from '../types/ai';
 
 export interface IMemoryRepository {
   getConversationThread(conversationId: string): Promise<ConversationThread | null>;
+  saveConversationThread(thread: ConversationThread): Promise<void>;
   getUserPreferences(userId: string): Promise<ConversationContext['preferences'] | null>;
   getSearchHistory(userId: string, limit?: number): Promise<SearchSessionRecord[]>;
   getPreviousRecommendations(conversationId: string): Promise<RecommendationRecord[]>;

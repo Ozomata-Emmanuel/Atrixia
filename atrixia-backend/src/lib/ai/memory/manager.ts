@@ -52,9 +52,7 @@ export class MemoryManager {
         updatedAt: new Date(),
       };
       
-      if (this.repository instanceof MockMemoryRepository) {
-        await this.repository.saveConversationThread(updatedThread);
-      }
+      await this.repository.saveConversationThread(updatedThread);
       
       messages = activeWindowMessages;
     }
@@ -80,8 +78,6 @@ export class MemoryManager {
     thread.messages.push(...newMessages);
     thread.updatedAt = new Date();
 
-    if (this.repository instanceof MockMemoryRepository) {
-      await this.repository.saveConversationThread(thread);
-    }
+    await this.repository.saveConversationThread(thread);
   }
 }
