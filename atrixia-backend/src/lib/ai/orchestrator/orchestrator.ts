@@ -1,132 +1,204 @@
 import { IAIProvider } from '../providers/interface';
 import { GeminiProvider } from '../providers/gemini';
-import { SYSTEM_PROMPT } from '../prompts/system';
-import { SHOPPING_REASONING_PROMPT } from '../prompts/shopping';
-import { FOLLOWUP_PROMPT } from '../prompts/followup';
-import { AIRequest, AIResponse, Message } from '../types/ai';
+import { AIRequest, Message } from '../types/ai';
+import { MarketplaceManager } from '../marketplace/manager';
+import { RankingEngine, RankingResult } from '../ranking/engine';
+import { MemoryManager } from '../memory/manager';
+import { PromptBuilder } from '../prompt-builder/builder';
+import { ReportGenerator, RecommendationReport } from '../report/generator';
+import { SSEStreamCoordinator } from '../streaming/sse';
+import { StructuredLogger } from '../logger/logger';
+import { ToolRegistry } from '../tools/registry';
+import {
+  MarketplaceSearchTool,
+  RankingTool,
+  MemoryTool,
+  PreferenceTool,
+  VisionTool,
+} from '../tools/tools';
+import { Response } from 'express';
 
 export class AIOrchestrator {
   private provider: IAIProvider;
-  private maxRetries = 3;
+  private manager: MarketplaceManager;
+  private memory: MemoryManager;
+  private registry: ToolRegistry;
 
-  constructor(provider?: IAIProvider) {
-    // Default to GeminiProvider if not provided, allowing easy swapability
+  constructor(provider?: IAIProvider, manager?: MarketplaceManager, memory?: MemoryManager) {
     this.provider = provider || new GeminiProvider();
+    this.manager = manager || new MarketplaceManager();
+    this.memory = memory || new MemoryManager(this.provider);
+    this.registry = ToolRegistry.getInstance();
+
+    this.registry.registerTool(new MarketplaceSearchTool(this.manager));
+    this.registry.registerTool(new RankingTool());
+    this.registry.registerTool(new MemoryTool(this.memory));
+    this.registry.registerTool(new PreferenceTool());
+    this.registry.registerTool(new VisionTool());
   }
 
-  /**
-   * Compiles the system instructions and messages based on request inputs.
-   */
-  private buildInferenceContext(request: AIRequest): { systemInstruction: string; messages: Message[] } {
-    let systemInstruction = SYSTEM_PROMPT;
-    const messages: Message[] = [];
-
-    // Inherit active shopping priorities or thread history if context is present
-    if (request.context) {
-      const prefs = request.context.preferences;
-      if (prefs) {
-        systemInstruction += `\nUser Preferences Configuration:\n` +
-          `- Preferred Currency: ${prefs.currency || 'USD'}\n` +
-          `- Budget Range: ${prefs.budgetMin ?? 0} to ${prefs.budgetMax ?? 1000}\n` +
-          `- Prioritize Price: ${prefs.prioritizePrice ?? true}\n` +
-          `- Prioritize Quality: ${prefs.prioritizeQuality ?? false}\n` +
-          `- Prioritize Shipping Speed: ${prefs.prioritizeShipping ?? false}\n` +
-          `- Prioritize Seller Trust: ${prefs.prioritizeSeller ?? false}\n`;
-      }
-
-      // Add conversation thread context
-      if (request.context.messages && request.context.messages.length > 0) {
-        messages.push(...request.context.messages);
-      }
-    }
-
-    // Append the active search prompt or reasoning directive
-    const isFollowup = messages.length > 0;
-    systemInstruction += isFollowup ? `\n${FOLLOWUP_PROMPT}` : `\n${SHOPPING_REASONING_PROMPT}`;
-
-    // Add the current user query to the payload if not already present in thread history
-    const lastMsg = messages[messages.length - 1];
-    if (!lastMsg || lastMsg.content !== request.query || lastMsg.role !== 'user') {
-      messages.push({ role: 'user', content: request.query });
-    }
-
-    return { systemInstruction, messages };
-  }
-
-  /**
-   * Executes AI inference with retry mechanism and error handling.
-   */
-  async processQuery(request: AIRequest): Promise<AIResponse> {
-    const { systemInstruction, messages } = this.buildInferenceContext(request);
-    let attempts = 0;
-    let lastError: any = null;
-
-    while (attempts < this.maxRetries) {
-      try {
-        attempts++;
-        const result = await this.provider.generate(messages, {
-          temperature: 0.2,
-          systemInstruction,
-          responseMimeType: 'application/json'
-        });
-
-        // Normalize text response to match AIResponse shape
-        const rawJson = JSON.parse(result.text);
-
-        return {
-          success: true,
-          id: rawJson.id || `session_${Math.random().toString(36).substring(7)}`,
-          productName: rawJson.productName,
-          confidenceScore: rawJson.confidenceScore,
-          summary: rawJson.summary,
-          pros: rawJson.pros,
-          cons: rawJson.cons,
-          tradeoffs: rawJson.tradeoffs,
-          alternatives: rawJson.alternatives,
-        };
-      } catch (error: any) {
-        lastError = error;
-        // Log attempt failure in structured format
-        console.warn(`[AIOrchestrator] Attempt ${attempts} failed: ${error.message || error}`);
-        
-        if (attempts >= this.maxRetries) {
-          break;
-        }
-        // Small exponential delay before retry
-        await new Promise((resolve) => setTimeout(resolve, attempts * 500));
-      }
-    }
-
-    // Fallback normalization in case of total failure
-    return {
-      success: false,
-      id: `err_${Math.random().toString(36).substring(7)}`,
-      error: {
-        code: 'PROVIDER_FAILURE',
-        message: `AI Orchestrator failed after ${this.maxRetries} retries. Raw error: ${lastError?.message || lastError}`,
-      },
-    };
-  }
-
-  /**
-   * Generates a streaming token context.
-   */
-  async *streamQuery(request: AIRequest): AsyncIterable<string> {
-    const { systemInstruction, messages } = this.buildInferenceContext(request);
+  async processQuery(
+    userId: string,
+    request: AIRequest
+  ): Promise<{ success: boolean; report?: RecommendationReport; error?: string }> {
+    const startTime = Date.now();
+    const conversationId = request.context?.conversationId || `conv_${Math.random().toString(36).substring(7)}`;
+    
     try {
-      yield* this.provider.stream(messages, {
+      StructuredLogger.info('[AIOrchestrator] Starting decision engine workflow...', {
+        userId,
+        conversationId,
+      });
+
+      const memoryContext = await this.registry.executeTool('MemoryTool', {
+        userId,
+        conversationId,
+      });
+      StructuredLogger.info('[AIOrchestrator] Context memory loaded successfully.', {
+        conversationId,
+      });
+
+      const searchStart = Date.now();
+      const rawProducts = await this.registry.executeTool('MarketplaceSearchTool', {
+        query: request.query,
+        category: request.context?.preferences?.prioritizeQuality ? 'Quality' : undefined,
+        region: 'US',
+        currency: request.context?.preferences?.currency || 'USD',
+      });
+      const marketplaceMs = Date.now() - searchStart;
+      StructuredLogger.info('[AIOrchestrator] Marketplace search retrieved listings.', {
+        conversationId,
+        metadata: { resultsCount: rawProducts.length },
+      });
+
+      const rankStart = Date.now();
+      const rankingResult: RankingResult = await this.registry.executeTool('RankingTool', {
+        products: rawProducts,
+        preferences: request.context?.preferences || memoryContext.preferences,
+      });
+      const rankingMs = Date.now() - rankStart;
+      StructuredLogger.info('[AIOrchestrator] Mathematical product ranking complete.', {
+        conversationId,
+        metadata: {
+          topPick: rankingResult.topPick?.title || null,
+          confidence: rankingResult.confidenceScore,
+        },
+      });
+
+      const systemInstruction = PromptBuilder.buildSystemPrompt(
+        { ...memoryContext, preferences: request.context?.preferences || memoryContext.preferences },
+        rawProducts,
+        rankingResult
+      );
+
+      const messages = PromptBuilder.buildMessages(request.query, memoryContext);
+
+      const inferenceStart = Date.now();
+      const aiResult = await this.provider.generate(messages, {
         temperature: 0.2,
         systemInstruction,
       });
-    } catch (error: any) {
-      console.error(`[AIOrchestrator] Streaming error: ${error.message || error}`);
-      yield JSON.stringify({
-        type: 'error',
-        payload: {
-          code: 'STREAMING_EXCEPTION',
-          message: error.message || String(error),
-        }
+      const inferenceMs = Date.now() - inferenceStart;
+      StructuredLogger.info('[AIOrchestrator] Generative text summary received.', {
+        conversationId,
       });
+
+      const report = ReportGenerator.generate(rankingResult, aiResult.text);
+
+      const outgoingMessages: Message[] = [
+        { role: 'user', content: request.query },
+        { role: 'assistant', content: report.executiveSummary },
+      ];
+      await this.memory.appendMessages(conversationId, outgoingMessages);
+
+      StructuredLogger.info('[AIOrchestrator] Workflow executed cleanly.', {
+        userId,
+        conversationId,
+        latencyMs: Date.now() - startTime,
+        timing: {
+          marketplaceMs,
+          rankingMs,
+          inferenceMs,
+        },
+      });
+
+      return {
+        success: true,
+        report,
+      };
+    } catch (err: any) {
+      StructuredLogger.error('[AIOrchestrator] Workflow exception encountered.', {
+        conversationId,
+        userId,
+        error: {
+          code: 'ORCHESTRATOR_WORKFLOW_ERROR',
+          message: err.message || String(err),
+          stack: err.stack,
+        },
+      });
+
+      return {
+        success: false,
+        error: err.message || String(err),
+      };
+    }
+  }
+
+  async processQueryStream(
+    userId: string,
+    request: AIRequest,
+    res: Response
+  ): Promise<void> {
+    const stream = new SSEStreamCoordinator(res);
+    const conversationId = request.context?.conversationId || `conv_${Math.random().toString(36).substring(7)}`;
+    stream.start(); 
+
+    try {
+      stream.step('memory_loaded', 15, { message: 'Conversation memory context restored.' });
+      const memoryContext = await this.memory.loadContext(userId, conversationId);
+
+      stream.step('marketplace_started', 30, { message: 'Searching online stores...' });
+      const rawProducts = await this.manager.searchAll(request.query, {
+        currency: request.context?.preferences?.currency || 'USD',
+      });
+      
+      stream.step('amazon_complete', 45, { message: 'Amazon catalog parsing finished.' });
+      stream.step('jumia_complete', 60, { message: 'Jumia product catalog parsed.' });
+      stream.step('ebay_complete', 70, { message: 'eBay listings aggregated.' });
+
+      stream.step('ranking_started', 75, { message: 'Sorting recommendations...' });
+      const rankingResult = RankingEngine.rank(rawProducts, request.context?.preferences || memoryContext.preferences);
+      stream.step('ranking_finished', 80, {
+        message: 'Top items determined.',
+        topPick: rankingResult.topPick?.title || null,
+      });
+
+      stream.step('ai_reasoning', 85, { message: 'Formulating trade-off report...' });
+      const systemInstruction = PromptBuilder.buildSystemPrompt(
+        { ...memoryContext, preferences: request.context?.preferences || memoryContext.preferences },
+        rawProducts,
+        rankingResult
+      );
+      const messages = PromptBuilder.buildMessages(request.query, memoryContext);
+
+      const aiResult = await this.provider.generate(messages, {
+        temperature: 0.2,
+        systemInstruction,
+      });
+
+      const report = ReportGenerator.generate(rankingResult, aiResult.text);
+
+      const outgoingMessages: Message[] = [
+        { role: 'user', content: request.query },
+        { role: 'assistant', content: report.executiveSummary },
+      ];
+      await this.memory.appendMessages(conversationId, outgoingMessages);
+
+      stream.step('recommendation', 95, { report });
+      stream.end({ message: 'Decision report compiled successfully.' });
+    } catch (err: any) {
+      console.error('[AIOrchestrator] Stream workflow failed:', err);
+      stream.error(err.message || String(err));
     }
   }
 }
