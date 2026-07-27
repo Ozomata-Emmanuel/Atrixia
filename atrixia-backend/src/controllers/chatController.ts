@@ -6,11 +6,11 @@ import { ChatRequestSchema } from '../lib/ai/schemas/request';
 import { PreferenceRepository } from '../repositories/preferenceRepository';
 import { DatabaseMemoryRepository } from '../repositories/databaseMemoryRepository';
 import { MemoryManager } from '../lib/ai/memory/manager';
-import { GeminiProvider } from '../lib/ai/providers/gemini';
+import { ProviderFactory } from '../lib/ai/providers/providerFactory';
 
 const preferenceRepo = new PreferenceRepository();
 const memoryRepo = new DatabaseMemoryRepository();
-const provider = new GeminiProvider();
+const provider = ProviderFactory.getProvider();
 const memoryManager = new MemoryManager(provider, memoryRepo);
 const orchestrator = new AIOrchestrator(provider, undefined, memoryManager);
 

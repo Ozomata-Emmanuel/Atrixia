@@ -1,5 +1,5 @@
 import { IAIProvider } from '../providers/interface';
-import { GeminiProvider } from '../providers/gemini';
+import { ProviderFactory } from '../providers/providerFactory';
 import { AIRequest, Message } from '../types/ai';
 import { MarketplaceManager } from '../marketplace/manager';
 import { RankingEngine, RankingResult } from '../ranking/engine';
@@ -52,7 +52,7 @@ export class AIOrchestrator {
   private registry: ToolRegistry;
 
   constructor(provider?: IAIProvider, manager?: MarketplaceManager, memory?: MemoryManager) {
-    this.provider = provider || new GeminiProvider();
+    this.provider = provider || ProviderFactory.getProvider();
     this.manager = manager || new MarketplaceManager();
     this.memory = memory || new MemoryManager(this.provider);
     this.registry = ToolRegistry.getInstance();
