@@ -13,31 +13,45 @@ export class PromptBuilder {
   ): string {
     let prompt = SYSTEM_PROMPT;
 
+    // Inject User Preferences
     if (context?.preferences) {
       const prefs = context.preferences;
       prompt += `\n\n[USER PREFERENCES]
 - Active Currency: ${prefs.currency || 'USD'}
 - Budget Minimum: ${prefs.budgetMin ?? 0}
-- Budget Maximum: ${prefs.budgetMax ?? 1000}
+- Budget Maximum: ${prefs.budgetMax ?? 10000}
 - Priorities: Price(${prefs.prioritizePrice ?? true}), Quality(${prefs.prioritizeQuality ?? false}), Shipping(${prefs.prioritizeShipping ?? false}), Seller(${prefs.prioritizeSeller ?? false})\n`;
     }
 
+    // Inject Conversation Summary if exists (Token Efficiency constraint)
+    if (context?.messages && context.messages.length > 0) {
+      // Historical summary details
+      prompt += `\n\n[CONVERSATION BACKGROUND]
+Restored summary logs of previous turns:
+- User is refining an active shopping conversation. Keep responses consistent with prior choices unless explicitly asked to switch categories.\n`;
+    }
+
+    // Inject Marketplace Search Results
     if (marketplaceResults && marketplaceResults.length > 0) {
-      prompt += `\n\n[MARKETPLACE SEARCH RESULTS]
-Analyze the following normalized product options carefully. Do not modify prices or titles in your recommendations:\n`;
-      
+      prompt += `\n\n[REAL-TIME MARKETPLACE PRODUCT CATALOG]
+Use ONLY the following products. DO NOT invent prices, ratings, or products. If a field is null, explicitly state uncertainty.
+`;
       marketplaceResults.forEach((product, idx) => {
-        prompt += `- Product #${idx + 1}: [${product.marketplace.toUpperCase()}] "${product.title}" | Price: ${product.price} ${product.currency} | Brand: ${product.brand || 'Unknown'} | Shipping Estimate: ${product.shippingEstimate || 'N/A'} | Seller Rating: ${product.sellerRating || 'N/A'}\n`;
+        prompt += `- Option #${idx + 1} ID: "${product.id}" | "${product.title}" | Price: ${product.price} ${product.currency} | Brand: ${product.brand || 'Unknown'} | Seller: "${product.seller || 'N/A'}" (Rating: ${product.sellerRating !== null ? product.sellerRating + '%' : 'N/A'}) | Reviews count: ${product.reviewCount || 0} | Shipping Cost: ${product.shippingCost !== null ? product.shippingCost + ' ' + product.currency : 'N/A'} (Est: "${product.shippingEstimate || 'N/A'}") | Source: ${product.marketplace.toUpperCase()} | Condition: ${product.condition || 'new'}\n`;
       });
     }
 
+    // Inject MCDA deterministic scoring outputs
     if (rankingResults && rankingResults.topPick) {
-      prompt += `\n\n[MATHEMATICAL MCDA RANKING RESULTS]
-The ranking engine has evaluated the listings using user weight preferences:
-- Best Overall Pick: "${rankingResults.topPick.title}" | Score: ${rankingResults.topPick.confidence}/100
-- Best Budget Pick: "${rankingResults.budgetPick?.title || 'N/A'}" | Price: ${rankingResults.budgetPick?.price || 'N/A'}
-- Recommendation Confidence: ${rankingResults.confidenceScore}%
-- Rationale Explanation: ${rankingResults.explanation}\n`;
+      prompt += `\n\n[DETERMINISTIC MCDA SCORING RESULTS]
+The backend ranking module scored these candidates mathematically:
+- Best Overall Pick: "${rankingResults.topPick.title}" (ID: "${rankingResults.topPick.id}") | Score: ${rankingResults.topPick.confidence}/100
+- Best Budget Pick: "${rankingResults.budgetPick?.title || 'N/A'}" (ID: "${rankingResults.budgetPick?.id || 'N/A'}") | Price: ${rankingResults.budgetPick?.price || 'N/A'}
+- Overall Analysis: ${rankingResults.explanation}
+- Calculated Confidence: ${rankingResults.confidenceScore}/100
+
+INSTRUCTIONS:
+Explain these mathematical rankings using actual attributes (compare prices, seller feedback, and shipping speed). Do not perform calculations in your response.\n`;
     }
 
     const isFollowup = context?.messages && context.messages.length > 0;
@@ -54,6 +68,7 @@ The ranking engine has evaluated the listings using user weight preferences:
   ): Message[] {
     const messages: Message[] = [];
 
+    // Keep active messages history
     if (context?.messages) {
       messages.push(...context.messages);
     }

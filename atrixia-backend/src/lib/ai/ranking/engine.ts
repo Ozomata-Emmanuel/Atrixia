@@ -14,6 +14,7 @@ export interface RankingResult {
   topPick: NormalizedProduct | null;
   budgetPick: NormalizedProduct | null;
   confidenceScore: number;
+  confidenceLevel: 'High' | 'Medium' | 'Low';
   explanation: string;
 }
 
@@ -28,7 +29,7 @@ export class RankingEngine {
     }
   ): RankingResult {
     if (products.length === 0) {
-      return { products: [], topPick: null, budgetPick: null, confidenceScore: 0, explanation: 'No products to evaluate.' };
+      return { products: [], topPick: null, budgetPick: null, confidenceScore: 0, confidenceLevel: 'Low', explanation: 'No products to evaluate.' };
     }
 
     const prices = products.map((p) => p.price);
@@ -78,7 +79,7 @@ export class RankingEngine {
       }
     }
 
-    const confidenceScore = calculateConfidence(topPick, runnerUp, scoredProducts);
+    const confidenceResult = calculateConfidence(topPick, runnerUp, scoredProducts);
 
     let explanation = '';
     if (topPick) {
@@ -96,7 +97,8 @@ export class RankingEngine {
       products: scoredProducts,
       topPick,
       budgetPick: budgetPick || null,
-      confidenceScore,
+      confidenceScore: confidenceResult.score,
+      confidenceLevel: confidenceResult.level,
       explanation,
     };
   }

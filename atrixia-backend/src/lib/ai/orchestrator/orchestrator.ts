@@ -18,6 +18,33 @@ import {
 } from '../tools/tools';
 import { Response } from 'express';
 
+// Strict schema mapping for JSON Mode
+const responseSchema = {
+  type: 'OBJECT',
+  properties: {
+    summary: { type: 'STRING' },
+    recommendation: { type: 'STRING' },
+    reasoning: { type: 'STRING' },
+    pros: { type: 'ARRAY', items: { type: 'STRING' } },
+    cons: { type: 'ARRAY', items: { type: 'STRING' } },
+    alternatives: { type: 'ARRAY', items: { type: 'STRING' } },
+    warnings: { type: 'ARRAY', items: { type: 'STRING' } },
+    confidence: { type: 'STRING' },
+    next_questions: { type: 'ARRAY', items: { type: 'STRING' } }
+  },
+  required: [
+    'summary',
+    'recommendation',
+    'reasoning',
+    'pros',
+    'cons',
+    'alternatives',
+    'warnings',
+    'confidence',
+    'next_questions'
+  ]
+};
+
 export class AIOrchestrator {
   private provider: IAIProvider;
   private manager: MarketplaceManager;
@@ -45,80 +72,109 @@ export class AIOrchestrator {
     const conversationId = request.context?.conversationId || `conv_${Math.random().toString(36).substring(7)}`;
     
     try {
-      StructuredLogger.info('[AIOrchestrator] Starting decision engine workflow...', {
+      StructuredLogger.info('[AIOrchestrator] Restoring dialogue memory context...', {
         userId,
         conversationId,
       });
 
+      // 1. Restore memory & preferences
       const memoryContext = await this.registry.executeTool('MemoryTool', {
         userId,
         conversationId,
       });
-      StructuredLogger.info('[AIOrchestrator] Context memory loaded successfully.', {
-        conversationId,
+      const memoryMs = Date.now() - startTime;
+
+      const preferences = await this.registry.executeTool('PreferenceTool', {
+        preferences: request.context?.preferences || memoryContext.preferences
       });
 
+      // 2. Marketplace search (using Mock / stubs concurrently)
       const searchStart = Date.now();
       const rawProducts = await this.registry.executeTool('MarketplaceSearchTool', {
         query: request.query,
-        category: request.context?.preferences?.prioritizeQuality ? 'Quality' : undefined,
+        category: preferences?.prioritizeQuality ? 'Quality' : undefined,
         region: 'US',
-        currency: request.context?.preferences?.currency || 'USD',
+        currency: preferences?.currency || 'USD',
       });
       const marketplaceMs = Date.now() - searchStart;
-      StructuredLogger.info('[AIOrchestrator] Marketplace search retrieved listings.', {
-        conversationId,
-        metadata: { resultsCount: rawProducts.length },
-      });
 
+      // 3. Score and Rank listings deterministically
       const rankStart = Date.now();
       const rankingResult: RankingResult = await this.registry.executeTool('RankingTool', {
         products: rawProducts,
-        preferences: request.context?.preferences || memoryContext.preferences,
+        preferences,
       });
       const rankingMs = Date.now() - rankStart;
-      StructuredLogger.info('[AIOrchestrator] Mathematical product ranking complete.', {
-        conversationId,
-        metadata: {
-          topPick: rankingResult.topPick?.title || null,
-          confidence: rankingResult.confidenceScore,
-        },
-      });
 
+      // 4. Build Dynamically composed Prompt
       const systemInstruction = PromptBuilder.buildSystemPrompt(
-        { ...memoryContext, preferences: request.context?.preferences || memoryContext.preferences },
+        { ...memoryContext, preferences },
         rawProducts,
         rankingResult
       );
-
       const messages = PromptBuilder.buildMessages(request.query, memoryContext);
 
+      // 5. Invoke Gemini with structured JSON Mode constraints
       const inferenceStart = Date.now();
-      const aiResult = await this.provider.generate(messages, {
-        temperature: 0.2,
-        systemInstruction,
-      });
+      let retryCount = 0;
+      let aiResult;
+      
+      while (true) {
+        try {
+          aiResult = await this.provider.generate(messages, {
+            temperature: 0.15,
+            systemInstruction,
+            responseMimeType: 'application/json',
+            responseSchema,
+          });
+          
+          // Verify JSON structure parses
+          JSON.parse(aiResult.text);
+          break;
+        } catch (jsonErr: any) {
+          retryCount++;
+          if (retryCount > 1) {
+            throw new Error(`Inference returned malformed JSON response schema after retry: ${jsonErr.message}`);
+          }
+          StructuredLogger.warn('[AIOrchestrator] Gemini JSON parsing failed, retrying once...', {
+            conversationId,
+            error: jsonErr.message,
+          });
+        }
+      }
+      
       const inferenceMs = Date.now() - inferenceStart;
-      StructuredLogger.info('[AIOrchestrator] Generative text summary received.', {
-        conversationId,
-      });
 
-      const report = ReportGenerator.generate(rankingResult, aiResult.text);
+      // 6. Generate structured Recommendation Report
+      const validationStart = Date.now();
+      const rawJson = JSON.parse(aiResult.text);
+      const report = ReportGenerator.generate(rankingResult, rawJson.summary || rawJson.recommendation);
+      const validationMs = Date.now() - validationStart;
 
+      // 7. Persist responses to memory
+      const persistStart = Date.now();
       const outgoingMessages: Message[] = [
         { role: 'user', content: request.query },
         { role: 'assistant', content: report.executiveSummary },
       ];
       await this.memory.appendMessages(conversationId, outgoingMessages);
+      const persistMs = Date.now() - persistStart;
 
       StructuredLogger.info('[AIOrchestrator] Workflow executed cleanly.', {
         userId,
         conversationId,
         latencyMs: Date.now() - startTime,
+        metadata: {
+          promptTokens: 0, // SDK handles this internally
+          retryCount,
+        },
         timing: {
+          memoryMs,
           marketplaceMs,
           rankingMs,
           inferenceMs,
+          validationMs,
+          persistMs,
         },
       });
 
@@ -151,53 +207,67 @@ export class AIOrchestrator {
   ): Promise<void> {
     const stream = new SSEStreamCoordinator(res);
     const conversationId = request.context?.conversationId || `conv_${Math.random().toString(36).substring(7)}`;
-    stream.start(); 
+    
+    stream.step('thinking', 5, { message: 'Initializing decision pipeline...' }); 
 
     try {
-      stream.step('memory_loaded', 15, { message: 'Conversation memory context restored.' });
+      // 1. Load memory
+      stream.step('retrieving_memory', 15, { message: 'Conversation memory context restored.' });
       const memoryContext = await this.memory.loadContext(userId, conversationId);
 
-      stream.step('marketplace_started', 30, { message: 'Searching online stores...' });
+      // 2. Preferences
+      stream.step('loading_preferences', 25, { message: 'Active priority preferences restored.' });
+      const preferences = request.context?.preferences || memoryContext.preferences;
+
+      // 3. Search
+      stream.step('searching_marketplaces', 40, { message: 'Concurrently searching online catalogs...' });
       const rawProducts = await this.manager.searchAll(request.query, {
-        currency: request.context?.preferences?.currency || 'USD',
-      });
-      
-      stream.step('amazon_complete', 45, { message: 'Amazon catalog parsing finished.' });
-      stream.step('jumia_complete', 60, { message: 'Jumia product catalog parsed.' });
-      stream.step('ebay_complete', 70, { message: 'eBay listings aggregated.' });
-
-      stream.step('ranking_started', 75, { message: 'Sorting recommendations...' });
-      const rankingResult = RankingEngine.rank(rawProducts, request.context?.preferences || memoryContext.preferences);
-      stream.step('ranking_finished', 80, {
-        message: 'Top items determined.',
-        topPick: rankingResult.topPick?.title || null,
+        currency: preferences?.currency || 'USD',
       });
 
-      stream.step('ai_reasoning', 85, { message: 'Formulating trade-off report...' });
+      // 4. Mathematical ranking
+      stream.step('ranking_products', 65, { message: 'Ranking candidates mathematically...' });
+      const rankingResult = RankingEngine.rank(rawProducts, preferences);
+
+      // 5. Build Dynamic composed Prompt
+      stream.step('analyzing_tradeoffs', 75, { message: 'Formulating trade-off analysis...' });
       const systemInstruction = PromptBuilder.buildSystemPrompt(
-        { ...memoryContext, preferences: request.context?.preferences || memoryContext.preferences },
+        { ...memoryContext, preferences },
         rawProducts,
         rankingResult
       );
       const messages = PromptBuilder.buildMessages(request.query, memoryContext);
 
+      // 6. Invoke Gemini JSON mode
+      stream.step('generating_explanation', 85, { message: 'Compiling structured shopping response...' });
       const aiResult = await this.provider.generate(messages, {
-        temperature: 0.2,
+        temperature: 0.15,
         systemInstruction,
+        responseMimeType: 'application/json',
+        responseSchema,
       });
 
-      const report = ReportGenerator.generate(rankingResult, aiResult.text);
+      // 7. Validate output
+      stream.step('validating_response', 92, { message: 'Validating structural schemas...' });
+      const rawJson = JSON.parse(aiResult.text);
+      const report = ReportGenerator.generate(rankingResult, rawJson.summary || rawJson.recommendation);
 
+      // 8. Persist results
+      stream.step('saving_results', 98, { message: 'Restoring logs to database...' });
       const outgoingMessages: Message[] = [
         { role: 'user', content: request.query },
         { role: 'assistant', content: report.executiveSummary },
       ];
       await this.memory.appendMessages(conversationId, outgoingMessages);
 
-      stream.step('recommendation', 95, { report });
-      stream.end({ message: 'Decision report compiled successfully.' });
+      stream.step('recommendation', 99, { report });
+      stream.end({ message: 'Decision report compiled successfully.', report });
     } catch (err: any) {
-      console.error('[AIOrchestrator] Stream workflow failed:', err);
+      StructuredLogger.error('[AIOrchestrator] Stream workflow failed:', {
+        conversationId,
+        userId,
+        error: err.message,
+      });
       stream.error(err.message || String(err));
     }
   }
