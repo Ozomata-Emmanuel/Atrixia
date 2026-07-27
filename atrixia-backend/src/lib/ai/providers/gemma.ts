@@ -10,21 +10,21 @@ export class GemmaProvider implements IAIProvider {
 
   constructor() {
     if (aiConfig.provider === 'google-studio') {
-      this.defaultModel = 'gemma-2-9b';
+      this.defaultModel = 'gemma-4-12b';
       this.client = new GoogleGenAI({ apiKey: aiConfig.gemmaApiKey });
     } else if (aiConfig.provider === 'vertex') {
-      this.defaultModel = 'gemma-2-9b';
+      this.defaultModel = 'gemma-4-12b';
       this.client = new GoogleGenAI({
         enterprise: true,
         project: aiConfig.googleProject,
         location: aiConfig.vertexLocation,
       });
     } else if (aiConfig.provider === 'ollama') {
-      this.defaultModel = 'gemma2:9b';
+      this.defaultModel = 'gemma-4:12b';
     } else if (aiConfig.provider === 'openrouter') {
-      this.defaultModel = 'google/gemma-2-9b-it';
+      this.defaultModel = 'google/gemma-4-12b-it';
     } else {
-      this.defaultModel = 'google/gemma-2-9b';
+      this.defaultModel = 'google/gemma-4-12b';
     }
   }
 
