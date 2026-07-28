@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
+import AnimatedGridBackground from '../../components/AnimatedGridBackground';
 
 const SignIn = () => {
   const [email, setEmail] = useState('');
@@ -40,30 +41,9 @@ const SignIn = () => {
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-64px)] flex items-center justify-center py-20 bg-[#f8f8f8] overflow-hidden">
+    <div className="relative min-h-screen flex items-center justify-center py-20 bg-[#f8f8f8] overflow-hidden">
       {/* Grid Background */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div
-          className="absolute -left-15 -top-15 animate-[moveGrid_25s_linear_infinite]"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(40, 100px)",
-            gridAutoRows: "100px",
-          }}
-        >
-          {Array.from({ length: 1200 }).map((_, i) => (
-            <div
-              key={i}
-              style={{
-                backgroundColor:
-                  Math.random() > 0.5
-                    ? `hsla(${Math.random() * 360}, 80%, 60%, 0.15)`
-                    : "transparent",
-              }}
-            />
-          ))}
-        </div>
-      </div>
+      <AnimatedGridBackground/>
 
       <div className="relative z-10 w-full max-w-md">
         <div className="bg-white/90 backdrop-blur-sm p-8 rounded-2xl shadow-xl border border-gray-100/50">

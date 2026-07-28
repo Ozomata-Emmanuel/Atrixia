@@ -33,33 +33,29 @@ html {
    Neat Scrollbar — Light Mode
    ========================================== */
 
+.neat-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #525252;
+}
+
 .neat-scrollbar::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 4px;
+  height: 5px;
 }
 
 .neat-scrollbar::-webkit-scrollbar-track {
-  background: #f3f4f6; /* light gray */
-  border-radius: 999px;
+  border-radius: 10px;
 }
 
 .neat-scrollbar::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #a5b4fc, #e5e8ff); /* soft indigo */
-  border-radius: 999px;
-  border: 2px solid #f3f4f6;
-  transition: background 0.25s ease;
+  background-color: #dadada;
+  height: 10px;
+  border-radius: 3px;
+  border: px solid; 
+  background-clip: content-box;
 }
 
 .neat-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #cbd0fa, #c9caff);
+  margin-right: 10px;
+  background-color: #acacac;
 }
 
-.neat-scrollbar::-webkit-scrollbar-corner {
-  background: #f3f4f6;
-}
-
-/* Firefox */
-.neat-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: #b4b4b4 #f3f4f6;
-}
