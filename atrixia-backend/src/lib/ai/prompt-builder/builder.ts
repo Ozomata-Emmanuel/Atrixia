@@ -23,55 +23,70 @@ export class PromptBuilder {
 - Priorities: Price(${prefs.prioritizePrice ?? true}), Quality(${prefs.prioritizeQuality ?? false}), Shipping(${prefs.prioritizeShipping ?? false}), Seller(${prefs.prioritizeSeller ?? false})\n`;
     }
 
-    // Inject Conversation Summary if exists (Token Efficiency constraint)
+    // Inject Conversation Summary
     if (context?.messages && context.messages.length > 0) {
-      // Historical summary details
       prompt += `\n\n[CONVERSATION BACKGROUND]
-Restored summary logs of previous turns:
-- User is refining an active shopping conversation. Keep responses consistent with prior choices unless explicitly asked to switch categories.\n`;
+User is refining an active shopping conversation. Keep responses consistent with prior choices unless explicitly asked to switch.\n`;
     }
 
-    // Inject Marketplace Search Results
+    // Inject Marketplace Products
     if (marketplaceResults && marketplaceResults.length > 0) {
       prompt += `\n\n[REAL-TIME MARKETPLACE PRODUCT CATALOG]
-Use ONLY the following products. DO NOT invent prices, ratings, or products. If a field is null, explicitly state uncertainty.
+Use ONLY the following products. DO NOT invent prices, ratings, or products.
 `;
-      marketplaceResults.forEach((product, idx) => {
-        prompt += `- Option #${idx + 1} ID: "${product.id}" | "${product.title}" | Price: ${product.price} ${product.currency} | Brand: ${product.brand || 'Unknown'} | Seller: "${product.seller || 'N/A'}" (Rating: ${product.sellerRating !== null ? product.sellerRating + '%' : 'N/A'}) | Reviews count: ${product.reviewCount || 0} | Shipping Cost: ${product.shippingCost !== null ? product.shippingCost + ' ' + product.currency : 'N/A'} (Est: "${product.shippingEstimate || 'N/A'}") | Source: ${product.marketplace.toUpperCase()} | Condition: ${product.condition || 'new'}\n`;
+      marketplaceResults.forEach((p, idx) => {
+        prompt += `Option #${idx + 1}:
+  ID: "${p.id}"
+  Title: "${p.title}"
+  Price: ${p.price} ${p.currency}
+  Brand: ${p.brand || 'Unknown'}
+  Seller: "${p.seller || 'N/A'}" (Rating: ${p.sellerRating !== null ? p.sellerRating + '%' : 'N/A'})
+  Reviews: ${p.reviewCount || 0}
+  Shipping: ${p.shippingCost !== null ? '$' + p.shippingCost : 'N/A'} (${p.shippingEstimate || 'N/A'})
+  Source: ${p.marketplace.toUpperCase()}
+  Condition: ${p.condition || 'new'}\n`;
       });
     }
 
-    // Inject MCDA deterministic scoring outputs
+    // Inject MCDA scoring
     if (rankingResults && rankingResults.topPick) {
       prompt += `\n\n[DETERMINISTIC MCDA SCORING RESULTS]
-The backend ranking module scored these candidates mathematically:
-- Best Overall Pick: "${rankingResults.topPick.title}" (ID: "${rankingResults.topPick.id}") | Score: ${rankingResults.topPick.confidence}/100
-- Best Budget Pick: "${rankingResults.budgetPick?.title || 'N/A'}" (ID: "${rankingResults.budgetPick?.id || 'N/A'}") | Price: ${rankingResults.budgetPick?.price || 'N/A'}
-- Overall Analysis: ${rankingResults.explanation}
-- Calculated Confidence: ${rankingResults.confidenceScore}/100
-
-INSTRUCTIONS:
-Explain these mathematical rankings using actual attributes (compare prices, seller feedback, and shipping speed). Do not perform calculations in your response.\n`;
+- Best Overall: "${rankingResults.topPick.title}" (ID: "${rankingResults.topPick.id}") | Score: ${rankingResults.topPick.confidence}/100
+- Best Budget: "${rankingResults.budgetPick?.title || 'N/A'}" | Price: ${rankingResults.budgetPick?.price || 'N/A'}
+- Analysis: ${rankingResults.explanation}
+- Confidence: ${rankingResults.confidenceScore}/100\n`;
     }
 
     const isFollowup = context?.messages && context.messages.length > 0;
-    prompt += isFollowup 
+    prompt += isFollowup
       ? `\n\n[INSTRUCTIONS]\n${FOLLOWUP_PROMPT}`
       : `\n\n[INSTRUCTIONS]\n${SHOPPING_REASONING_PROMPT}`;
 
+    // Updated output format — includes per-product analysis
+    const productIds = (marketplaceResults || []).map((p) => `"${p.id}"`).join(', ');
     prompt += `\n\n[OUTPUT FORMAT]
-You MUST output your response as a valid JSON object matching the following structure exactly:
+You MUST output a valid JSON object with this EXACT structure. No extra text, no markdown.
+
 {
-  "summary": "string",
-  "recommendation": "string",
-  "reasoning": "string",
-  "pros": ["string"],
-  "cons": ["string"],
-  "alternatives": ["string"],
-  "warnings": ["string"],
-  "confidence": "string",
-  "next_questions": ["string"]
-}`;
+  "summary": "2-3 sentence overall summary of the search results",
+  "recommendation": "Which product you recommend most and why",
+  "reasoning": "Detailed explanation of your recommendation based on the data",
+  "pros": ["Overall pro 1", "Overall pro 2"],
+  "cons": ["Overall con 1", "Overall con 2"],
+  "warnings": ["Any important warnings for the buyer"],
+  "confidence": "High / Medium / Low with brief reason",
+  "next_questions": ["Clarifying question 1", "Clarifying question 2"],
+  "products": [
+    {
+      "productId": "<one of: ${productIds}>",
+      "description": "1-2 sentence natural language description of this specific product",
+      "pros": ["Specific pro for this product", "Another pro"],
+      "cons": ["Specific con for this product", "Another con"]
+    }
+  ]
+}
+
+The "products" array MUST contain one entry for EACH product ID listed above. Use the exact IDs.`;
 
     return prompt;
   }
@@ -82,7 +97,6 @@ You MUST output your response as a valid JSON object matching the following stru
   ): Message[] {
     const messages: Message[] = [];
 
-    // Keep active messages history
     if (context?.messages) {
       messages.push(...context.messages);
     }

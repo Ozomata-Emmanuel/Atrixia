@@ -1,6 +1,6 @@
 export interface NormalizedProduct {
   id: string;
-  marketplace: 'amazon' | 'ebay' | 'jumia' | 'aliexpress' | 'temu' | 'mock';
+  marketplace: 'amazon' | 'ebay' | 'jumia' | 'konga' | 'aliexpress' | 'temu' | 'mock';
   title: string;
   brand: string | null;
   price: number;
@@ -18,4 +18,9 @@ export interface NormalizedProduct {
   attributes: Record<string, string | number | boolean> | null;
   confidence: number | null;
   rawData: any;
+
+  // Per-product AI-enriched fields (populated after Gemma analysis)
+  description: string | null;
+  pros: string[];
+  cons: string[];
 }

@@ -7,7 +7,8 @@ import { TimeoutError } from './errors';
 export class MarketplaceManager {
   private registry: MarketplaceRegistry;
   private cache: IMarketplaceCache;
-  private defaultTimeoutMs = 4000;
+  // ScraperAPI + Jumia can take 8-20s — give enough runway before cutting off
+  private defaultTimeoutMs = 30000;
 
   constructor(registry?: MarketplaceRegistry, cache?: IMarketplaceCache) {
     this.registry = registry || MarketplaceRegistry.getInstance();

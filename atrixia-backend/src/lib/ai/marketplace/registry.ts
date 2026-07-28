@@ -1,12 +1,23 @@
 import { IMarketplaceAdapter } from '../adapters/interface';
-import { MockAdapter } from '../adapters/mock';
+import { EbayAdapter } from '../adapters/ebay';
+import { JumiaAdapter } from '../adapters/jumia';
+import { KongaAdapter } from '../adapters/konga';
+import { AliexpressAdapter } from '../adapters/aliexpress';
+import { TemuAdapter } from '../adapters/temu';
 
 export class MarketplaceRegistry {
   private static instance: MarketplaceRegistry;
   private adapters = new Map<string, { adapter: IMarketplaceAdapter; enabled: boolean }>();
 
   private constructor() {
-    this.registerAdapter(new MockAdapter());
+    // Direct-fetch adapters (fast, no proxy needed)
+    this.registerAdapter(new JumiaAdapter());
+    this.registerAdapter(new KongaAdapter());
+    // eBay: uses official API when EBAY_APP_ID is set, ScraperAPI proxy otherwise
+    this.registerAdapter(new EbayAdapter());
+    // ScraperAPI-dependent adapters
+    this.registerAdapter(new AliexpressAdapter());
+    this.registerAdapter(new TemuAdapter());
   }
 
   public static getInstance(): MarketplaceRegistry {

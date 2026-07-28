@@ -5,7 +5,7 @@ import { MarketplaceManager } from '../marketplace/manager';
 import { RankingEngine, RankingResult } from '../ranking/engine';
 import { MemoryManager } from '../memory/manager';
 import { PromptBuilder } from '../prompt-builder/builder';
-import { ReportGenerator, RecommendationReport } from '../report/generator';
+import { ReportGenerator, RecommendationReport, AIProductAnalysis } from '../report/generator';
 import { SSEStreamCoordinator } from '../streaming/sse';
 import { StructuredLogger } from '../logger/logger';
 import { ToolRegistry } from '../tools/registry';
@@ -17,6 +17,11 @@ import {
   VisionTool,
 } from '../tools/tools';
 import { Response } from 'express';
+import { SearchHistoryRepository } from '../../../repositories/searchHistoryRepository';
+import { sanitizeQuery } from '../adapters/querySanitizer';
+
+// Module-level repo instance (shared, lightweight)
+const searchHistoryRepo = new SearchHistoryRepository();
 
 // Strict schema mapping for JSON Mode
 const responseSchema = {
@@ -88,10 +93,14 @@ export class AIOrchestrator {
         preferences: request.context?.preferences || memoryContext.preferences
       });
 
-      // 2. Marketplace search (using Mock / stubs concurrently)
+      // Hackathon Query Sanitizer: strip conversational filler so marketplace
+      // search engines receive clean keywords.
+      const searchKeywords = sanitizeQuery(request.query);
+
+      // 2. Marketplace search (using Jumia concurrently)
       const searchStart = Date.now();
       const rawProducts = await this.registry.executeTool('MarketplaceSearchTool', {
-        query: request.query,
+        query: searchKeywords || request.query,
         category: preferences?.prioritizeQuality ? 'Quality' : undefined,
         region: 'US',
         currency: preferences?.currency || 'USD',
@@ -149,13 +158,17 @@ export class AIOrchestrator {
       const validationStart = Date.now();
       const rawJson = JSON.parse(aiResult.text);
       const report = ReportGenerator.generate(rankingResult, rawJson.summary || rawJson.recommendation);
+
+      // Merge per-product AI analysis into the report
+      const aiProducts: AIProductAnalysis[] = Array.isArray(rawJson.products) ? rawJson.products : [];
+      const enrichedReport = ReportGenerator.mergeAIProductAnalysis(report, aiProducts);
       const validationMs = Date.now() - validationStart;
 
       // 7. Persist responses to memory
       const persistStart = Date.now();
       const outgoingMessages: Message[] = [
         { role: 'user', content: request.query },
-        { role: 'assistant', content: report.executiveSummary },
+        { role: 'assistant', content: enrichedReport.executiveSummary },
       ];
       await this.memory.appendMessages(conversationId, outgoingMessages);
       const persistMs = Date.now() - persistStart;
@@ -180,7 +193,7 @@ export class AIOrchestrator {
 
       return {
         success: true,
-        report,
+        report: enrichedReport,
       };
     } catch (err: any) {
       StructuredLogger.error('[AIOrchestrator] Workflow exception encountered.', {
@@ -208,7 +221,8 @@ export class AIOrchestrator {
     const stream = new SSEStreamCoordinator(res);
     const conversationId = request.context?.conversationId || `conv_${Math.random().toString(36).substring(7)}`;
     
-    stream.step('thinking', 5, { message: 'Initializing decision pipeline...' }); 
+    // Initialize SSE headers + flush immediately so the client connection opens
+    stream.start();
 
     try {
       // 1. Load memory
@@ -219,17 +233,20 @@ export class AIOrchestrator {
       stream.step('loading_preferences', 25, { message: 'Active priority preferences restored.' });
       const preferences = request.context?.preferences || memoryContext.preferences;
 
-      // 3. Search
+      // 3. Sanitize query — delegates to shared querySanitizer
+      const effectiveQuery = sanitizeQuery(request.query);
+
+      // 4. Search
       stream.step('searching_marketplaces', 40, { message: 'Concurrently searching online catalogs...' });
-      const rawProducts = await this.manager.searchAll(request.query, {
+      const rawProducts = await this.manager.searchAll(effectiveQuery, {
         currency: preferences?.currency || 'USD',
       });
 
-      // 4. Mathematical ranking
+      // 5. Mathematical ranking
       stream.step('ranking_products', 65, { message: 'Ranking candidates mathematically...' });
       const rankingResult = RankingEngine.rank(rawProducts, preferences);
 
-      // 5. Build Dynamic composed Prompt
+      // 6. Build Dynamic composed Prompt
       stream.step('analyzing_tradeoffs', 75, { message: 'Formulating trade-off analysis...' });
       const systemInstruction = PromptBuilder.buildSystemPrompt(
         { ...memoryContext, preferences },
@@ -238,7 +255,7 @@ export class AIOrchestrator {
       );
       const messages = PromptBuilder.buildMessages(request.query, memoryContext);
 
-      // 6. Invoke Gemini JSON mode
+      // 7. Invoke Gemini JSON mode
       stream.step('generating_explanation', 85, { message: 'Compiling structured shopping response...' });
       const aiResult = await this.provider.generate(messages, {
         temperature: 0.15,
@@ -247,21 +264,41 @@ export class AIOrchestrator {
         // responseSchema, // Disabled to prevent fetch failed timeout with Gemma
       });
 
-      // 7. Validate output
+      // 8. Validate output
       stream.step('validating_response', 92, { message: 'Validating structural schemas...' });
       const rawJson = JSON.parse(aiResult.text);
       const report = ReportGenerator.generate(rankingResult, rawJson.summary || rawJson.recommendation);
 
-      // 8. Persist results
-      stream.step('saving_results', 98, { message: 'Restoring logs to database...' });
+      // Merge per-product AI analysis
+      const aiProducts: AIProductAnalysis[] = Array.isArray(rawJson.products) ? rawJson.products : [];
+      const enrichedReport = ReportGenerator.mergeAIProductAnalysis(report, aiProducts);
+
+      // 9. Persist to DB + memory
+      stream.step('saving_results', 98, { message: 'Saving results to database...' });
+
       const outgoingMessages: Message[] = [
         { role: 'user', content: request.query },
-        { role: 'assistant', content: report.executiveSummary },
+        { role: 'assistant', content: enrichedReport.executiveSummary },
       ];
       await this.memory.appendMessages(conversationId, outgoingMessages);
 
-      stream.step('recommendation', 99, { report });
-      stream.end({ message: 'Decision report compiled successfully.', report });
+      // Persist the full report to the searches table
+      await searchHistoryRepo.save({
+        id: enrichedReport.id,
+        query: request.query,
+        timestamp: new Date(),
+        resultsCount: rawProducts.length,
+        userId,
+        results: enrichedReport,
+      }).catch((err: any) => {
+        StructuredLogger.warn('[AIOrchestrator] Failed to persist search to DB:', {
+          conversationId,
+          error: err.message,
+        });
+      });
+
+      stream.step('recommendation', 99, { report: enrichedReport });
+      stream.end({ message: 'Decision report compiled successfully.', report: enrichedReport });
     } catch (err: any) {
       StructuredLogger.error('[AIOrchestrator] Stream workflow failed:', {
         conversationId,
