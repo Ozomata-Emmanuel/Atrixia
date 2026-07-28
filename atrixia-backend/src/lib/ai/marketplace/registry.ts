@@ -1,10 +1,13 @@
 import { IMarketplaceAdapter } from '../adapters/interface';
+import { MockAdapter } from '../adapters/mock';
 
 export class MarketplaceRegistry {
   private static instance: MarketplaceRegistry;
   private adapters = new Map<string, { adapter: IMarketplaceAdapter; enabled: boolean }>();
 
-  private constructor() {}
+  private constructor() {
+    this.registerAdapter(new MockAdapter());
+  }
 
   public static getInstance(): MarketplaceRegistry {
     if (!MarketplaceRegistry.instance) {

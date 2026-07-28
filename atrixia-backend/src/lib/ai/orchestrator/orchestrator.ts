@@ -125,7 +125,7 @@ export class AIOrchestrator {
             temperature: 0.15,
             systemInstruction,
             responseMimeType: 'application/json',
-            responseSchema,
+            // responseSchema, // Disabled to prevent fetch failed timeout with Gemma
           });
           
           // Verify JSON structure parses
@@ -244,7 +244,7 @@ export class AIOrchestrator {
         temperature: 0.15,
         systemInstruction,
         responseMimeType: 'application/json',
-        responseSchema,
+        // responseSchema, // Disabled to prevent fetch failed timeout with Gemma
       });
 
       // 7. Validate output

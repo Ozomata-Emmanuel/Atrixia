@@ -10,7 +10,7 @@ export class GemmaProvider implements IAIProvider {
 
   constructor() {
     if (aiConfig.provider === 'google-studio') {
-      this.defaultModel = 'gemma-4-12b';
+      this.defaultModel = 'gemma-4-31b-it';
       this.client = new GoogleGenAI({ apiKey: aiConfig.gemmaApiKey });
     } else if (aiConfig.provider === 'vertex') {
       this.defaultModel = 'gemma-4-12b';

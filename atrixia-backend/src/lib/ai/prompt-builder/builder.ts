@@ -59,6 +59,20 @@ Explain these mathematical rankings using actual attributes (compare prices, sel
       ? `\n\n[INSTRUCTIONS]\n${FOLLOWUP_PROMPT}`
       : `\n\n[INSTRUCTIONS]\n${SHOPPING_REASONING_PROMPT}`;
 
+    prompt += `\n\n[OUTPUT FORMAT]
+You MUST output your response as a valid JSON object matching the following structure exactly:
+{
+  "summary": "string",
+  "recommendation": "string",
+  "reasoning": "string",
+  "pros": ["string"],
+  "cons": ["string"],
+  "alternatives": ["string"],
+  "warnings": ["string"],
+  "confidence": "string",
+  "next_questions": ["string"]
+}`;
+
     return prompt;
   }
 
