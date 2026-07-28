@@ -125,7 +125,7 @@ export class JumiaAdapter implements IMarketplaceAdapter {
       console.warn(`[JumiaAdapter] No products parsed for query "${query}". HTML snippet:`, html.slice(0, 500));
     }
 
-    return products.slice(0, 6);
+    return products.slice(0, 3);
   }
 
   async health(): Promise<'healthy' | 'degraded' | 'offline'> {

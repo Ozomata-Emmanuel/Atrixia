@@ -8,13 +8,15 @@ import { SearchHistoryRepository } from '../repositories/searchHistoryRepository
 import { DatabaseMemoryRepository } from '../repositories/databaseMemoryRepository';
 import { MemoryManager } from '../lib/ai/memory/manager';
 import { ProviderFactory } from '../lib/ai/providers/providerFactory';
+import { MarketplaceManager } from '../lib/ai/marketplace/manager';
 
 const preferenceRepo = new PreferenceRepository();
 const searchHistoryRepo = new SearchHistoryRepository();
 const memoryRepo = new DatabaseMemoryRepository();
 const provider = ProviderFactory.getProvider();
 const memoryManager = new MemoryManager(provider, memoryRepo);
-const orchestrator = new AIOrchestrator(provider, undefined, memoryManager);
+const marketplaceManager = new MarketplaceManager();
+const orchestrator = new AIOrchestrator(provider, marketplaceManager, memoryManager);
 
 export const createSearch = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
@@ -28,13 +30,17 @@ export const createSearch = async (req: AuthRequest, res: Response, next: NextFu
       throw new AppError(`Invalid request payload: ${parsed.error.message}`, 400);
     }
 
-    const { query, context } = parsed.data;
+    const { query, context, marketplaces } = parsed.data;
     const preferences = await preferenceRepo.get(userId);
+
+    // Merge marketplaces — top-level field takes priority over context field
+    const resolvedMarketplaces = marketplaces || context?.marketplaces;
 
     const queryContext = {
       conversationId: context?.conversationId,
       messages: context?.messages || [],
       preferences: preferences || undefined,
+      marketplaces: resolvedMarketplaces,
     };
 
     const isStream = req.query.stream === 'true' || req.headers.accept === 'text/event-stream';
@@ -110,4 +116,32 @@ export const getHistory = async (req: AuthRequest, res: Response, next: NextFunc
   } catch (error) {
     next(error);
   }
+};
+
+/**
+ * GET /api/search/marketplaces
+ * Returns the list of available marketplace names the client can filter by.
+ * No auth required — safe to call before login for the marketplace picker UI.
+ */
+export const getMarketplaces = (_req: AuthRequest, res: Response) => {
+  const available = marketplaceManager.getAvailableMarketplaces();
+
+  // Enrich with display metadata for the frontend picker
+  const metadata: Record<string, { label: string; region: string; description: string }> = {
+    jumia:      { label: 'Jumia',       region: 'Nigeria / Africa',  description: 'Leading African e-commerce marketplace' },
+    konga:      { label: 'Konga',       region: 'Nigeria',           description: 'Nigerian online shopping platform' },
+    ebay:       { label: 'eBay',        region: 'US / Global',       description: 'Global marketplace with new & used items' },
+    aliexpress: { label: 'AliExpress',  region: 'Global',            description: 'Affordable products shipped worldwide' },
+    temu:       { label: 'Temu',        region: 'US / Global',       description: 'Budget-friendly products from global sellers' },
+  };
+
+  const marketplaces = available.map((name) => ({
+    id: name,
+    ...(metadata[name] || { label: name, region: 'Global', description: '' }),
+  }));
+
+  res.status(200).json({
+    success: true,
+    data: marketplaces,
+  });
 };

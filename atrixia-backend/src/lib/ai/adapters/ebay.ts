@@ -214,7 +214,7 @@ export class EbayAdapter implements IMarketplaceAdapter {
       } catch (_) {}
     });
 
-    return products.slice(0, 6);
+    return products.slice(0, 3);
   }
 
   async health(): Promise<'healthy' | 'degraded' | 'offline'> {

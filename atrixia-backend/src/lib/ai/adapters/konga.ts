@@ -37,12 +37,12 @@ export class KongaAdapter implements IMarketplaceAdapter {
     // Strategy 1: Konga embeds product JSON in a script tag as window.__STORE__ or similar
     const fromScript = this._extractFromScript(html, options);
     if (fromScript && fromScript.length > 0) {
-      return fromScript.slice(0, 6);
+      return fromScript.slice(0, 3);
     }
 
     // Strategy 2: HTML parsing
     const fromHtml = this._extractFromHtml(html, clean, options);
-    return fromHtml.slice(0, 6);
+    return fromHtml.slice(0, 3);
   }
 
   private _extractFromScript(

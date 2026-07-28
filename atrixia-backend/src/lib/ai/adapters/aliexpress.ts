@@ -47,11 +47,11 @@ export class AliexpressAdapter implements IMarketplaceAdapter {
 
     // Try embedded JSON first (fastest, most reliable)
     const fromJson = this._extractFromJson(html, options);
-    if (fromJson && fromJson.length > 0) return fromJson.slice(0, 6);
+    if (fromJson && fromJson.length > 0) return fromJson.slice(0, 3);
 
     // Fall back to HTML parsing
     const fromHtml = this._extractFromHtml(html, clean, options);
-    return fromHtml.slice(0, 6);
+    return fromHtml.slice(0, 3);
   }
 
   private _extractFromJson(

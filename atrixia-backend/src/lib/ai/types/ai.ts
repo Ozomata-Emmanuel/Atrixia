@@ -15,6 +15,8 @@ export interface ConversationContext {
     prioritizeShipping?: boolean;
     prioritizeSeller?: boolean;
   };
+  /** Optional user-specified marketplaces to search. If absent, all are used. */
+  marketplaces?: string[];
 }
 
 export interface AIRequest {

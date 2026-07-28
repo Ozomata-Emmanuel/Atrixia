@@ -97,13 +97,14 @@ export class AIOrchestrator {
       // search engines receive clean keywords.
       const searchKeywords = sanitizeQuery(request.query);
 
-      // 2. Marketplace search (using Jumia concurrently)
+      // 2. Marketplace search
       const searchStart = Date.now();
       const rawProducts = await this.registry.executeTool('MarketplaceSearchTool', {
         query: searchKeywords || request.query,
         category: preferences?.prioritizeQuality ? 'Quality' : undefined,
         region: 'US',
         currency: preferences?.currency || 'USD',
+        marketplaces: request.context?.marketplaces,
       });
       const marketplaceMs = Date.now() - searchStart;
 
@@ -240,6 +241,7 @@ export class AIOrchestrator {
       stream.step('searching_marketplaces', 40, { message: 'Concurrently searching online catalogs...' });
       const rawProducts = await this.manager.searchAll(effectiveQuery, {
         currency: preferences?.currency || 'USD',
+        marketplaces: request.context?.marketplaces,
       });
 
       // 5. Mathematical ranking
