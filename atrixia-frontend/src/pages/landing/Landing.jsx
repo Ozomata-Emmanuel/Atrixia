@@ -27,12 +27,6 @@ const Landing = () => {
     },
   ];
 
-  const stats = [
-    { number: "50K+", label: "Products Analyzed" },
-    { number: "10K+", label: "Happy Users" },
-    { number: "99%", label: "Accuracy Rate" },
-  ];
-
   return (
     <div className="relative min-h-screen overflow-hidden bg-linear-to-br from-gray-50 via-white to-gray-50">
       {/* Animated Grid Background */}
@@ -62,11 +56,8 @@ const Landing = () => {
       {/* Content */}
       <div className="relative z-10">
         {/* Hero Section */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-32 pb-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-42 pb-20">
           <div className="text-center mb-16">
-            <div className="inline-block mb-4 px-4 py-2 bg-[#009FB8]/10 backdrop-blur-sm rounded-full border border-[#009FB8]/20">
-              <p className="text-[#009FB8] font-semibold text-sm">Welcome to the future of shopping</p>
-            </div>
             
             <h1 className="text-5xl md:text-6xl lg:text-7xl font-serif-brand font-bold text-[#1a1a1a] mb-6 leading-tight">
               Shop Smarter with
@@ -92,16 +83,6 @@ const Landing = () => {
                 See How It Works
               </Link>
             </div>
-          </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-8 max-w-3xl mx-auto py-12 border-t border-b border-gray-200/50">
-            {stats.map((stat, idx) => (
-              <div key={idx} className="text-center">
-                <p className="text-3xl md:text-4xl font-bold text-[#009FB8] mb-2">{stat.number}</p>
-                <p className="text-sm text-[#666666] font-medium">{stat.label}</p>
-              </div>
-            ))}
           </div>
         </div>
 
