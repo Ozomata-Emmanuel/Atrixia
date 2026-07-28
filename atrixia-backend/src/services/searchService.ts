@@ -5,7 +5,7 @@ import { callAiService } from './aiService';
 import { AppError } from '../utils/error';
 
 export const executeSearch = async (userId: string, query: string, filters: Array<{ label: string, value: string }>) => {
-  const results = await callAiService(query, filters);
+  const results = await callAiService(userId, query, filters);
 
   const newSearch = await db.insert(searches).values({
     userId,

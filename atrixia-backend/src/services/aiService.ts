@@ -1,29 +1,33 @@
-import dotenv from 'dotenv';
 import { AppError } from '../utils/error';
+import { AIOrchestrator } from '../lib/ai/orchestrator/orchestrator';
 
-dotenv.config();
-
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:5001';
-
-export const callAiService = async (query: string, filters: Array<{ label: string, value: string }>) => {
+export const callAiService = async (userId: string, query: string, filters: Array<{ label: string, value: string }>) => {
   try {
-    const response = await fetch(`${AI_SERVICE_URL}/api/ai-search`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ query, filters }),
+    const orchestrator = new AIOrchestrator();
+    
+    // Map basic filters to preferences if possible or just pass them as context
+    const preferences: Record<string, any> = {};
+    filters.forEach(f => {
+      preferences[f.label.toLowerCase()] = f.value;
     });
 
-    if (!response.ok) {
-      throw new Error(`AI service responded with status: ${response.status}`);
+    const result = await orchestrator.processQuery(userId, {
+      query,
+      context: {
+        preferences,
+        messages: []
+      }
+    });
+
+    if (!result.success || !result.report) {
+      throw new Error(result.error || 'AI reasoning failed');
     }
 
-    const data = await response.json();
-    return data.results || [];
+    // Returning the structured report in an array to match the existing JSONB array DB schema 
+    // or you can return the alternatives array. For a comprehensive response, we return the whole report array.
+    return [result.report];
   } catch (error) {
     console.error('AI Service Error:', error);
-    // For hackathon, if AI is down, maybe return empty or throw
-    throw new AppError('Failed to fetch results from AI service', 500);
+    throw new AppError('Failed to generate results from AI agent', 500);
   }
 };
