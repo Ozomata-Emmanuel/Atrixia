@@ -12,6 +12,7 @@ export interface RecommendationReport {
   cons: string[];
   tradeoffs: string;
   confidenceScore: number;
+  confidenceLevel: 'High' | 'Medium' | 'Low';
   explanation: string;
   alternatives: NormalizedProduct[];
   warnings: string[];
@@ -23,7 +24,7 @@ export class ReportGenerator {
     rankingResult: RankingResult,
     aiTextSummary: string
   ): RecommendationReport {
-    const { products, topPick, budgetPick, confidenceScore, explanation } = rankingResult;
+    const { products, topPick, budgetPick, confidenceScore, confidenceLevel, explanation } = rankingResult;
 
     let bestPerformance: NormalizedProduct | null = null;
     if (products.length > 0) {
@@ -81,6 +82,7 @@ export class ReportGenerator {
       cons,
       tradeoffs: explanation,
       confidenceScore,
+      confidenceLevel,
       explanation: `MCDA score determined top recommendations with a final confidence calculation of ${confidenceScore}%.`,
       alternatives: products.slice(1, 4), 
       warnings,

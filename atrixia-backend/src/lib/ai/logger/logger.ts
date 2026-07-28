@@ -15,9 +15,12 @@ export interface LogPayload {
     durationMs: number;
   };
   timing?: {
+    memoryMs?: number;
     marketplaceMs?: number;
     rankingMs?: number;
     inferenceMs?: number;
+    validationMs?: number;
+    persistMs?: number;
   };
   error?: {
     code: string;

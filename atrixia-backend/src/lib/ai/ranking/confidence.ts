@@ -1,11 +1,18 @@
 import { NormalizedProduct } from '../models/product';
 
+export interface ConfidenceResult {
+  score: number;
+  level: 'High' | 'Medium' | 'Low';
+}
+
 export function calculateConfidence(
   topProduct: NormalizedProduct,
   runnerUp: NormalizedProduct | null,
   allProducts: NormalizedProduct[]
-): number {
-  if (allProducts.length === 0) return 0;
+): ConfidenceResult {
+  if (allProducts.length === 0) {
+    return { score: 0, level: 'Low' };
+  }
   
   let completenessScore = 0;
   if (topProduct.brand) completenessScore += 10;
@@ -27,5 +34,11 @@ export function calculateConfidence(
   else if (reviews > 50) consensusFactor = 20;
 
   const totalConfidence = Math.round(dataFactor + marginFactor + consensusFactor);
-  return Math.min(100, Math.max(50, totalConfidence));
+  const score = Math.min(100, Math.max(50, totalConfidence));
+
+  let level: 'High' | 'Medium' | 'Low' = 'Low';
+  if (score >= 80) level = 'High';
+  else if (score >= 65) level = 'Medium';
+
+  return { score, level };
 }

@@ -889,9 +889,9 @@ Authorization: Bearer {token}
 
 | Role | Person | Responsibility | Integration Point |
 |------|--------|-----------------|------------------|
-| **Backend** | King JOker | auth, API routes, AI integration | Calls `aiService.analyze()` |
-| **AI Integration** | Raymond | Gemma setup, marketplace scraping, ranking | Exposes `POST /analyze` endpoint |
-| **Frontend** | Ozomata | Web & Mobile design, UI & UX, API client | Calls `POST /api/search` |
+| **Backend** | King JOker | auth, API routes | Calls `aiService.analyze()` |
+| **AI Integration** | Raymond | Gemma setup, marketplace scraping, ranking, AI integration | Exposes `POST /analyze` endpoint |
+| **Frontend** | Ozomata | components, UI, API client | Calls `POST /api/search` |
 
 ### Key Integration Points
 
