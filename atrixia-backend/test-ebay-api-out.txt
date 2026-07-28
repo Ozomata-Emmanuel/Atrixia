@@ -1,0 +1,12 @@
+
+Searching eBay: "hp laptop"
+[EbayAdapter] Network error: HTTP 403
+Results: 0 in 7599ms
+
+Searching eBay: "wireless mouse"
+[EbayAdapter] Network error: HTTP 403
+Results: 0 in 1861ms
+
+Searching eBay: "gaming headset"
+[EbayAdapter] Network error: HTTP 403
+Results: 0 in 464ms
