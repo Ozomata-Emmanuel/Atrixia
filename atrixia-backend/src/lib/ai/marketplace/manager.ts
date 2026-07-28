@@ -110,8 +110,15 @@ export class MarketplaceManager {
       }
     }
 
-    // Deduplicate then cap total
+    // Deduplicate then shuffle so results are interleaved by marketplace, then cap total
     const deduped = MarketplaceNormalizer.deduplicateProducts(aggregated);
+
+    // Fisher-Yates shuffle — interleaves Jumia/Konga/eBay results
+    for (let i = deduped.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deduped[i], deduped[j]] = [deduped[j], deduped[i]];
+    }
+
     const finalResults = deduped.slice(0, TOTAL_PRODUCT_CAP);
 
     console.log(`[MarketplaceManager] Final: ${finalResults.length} products from ${allAdapters.length} marketplace(s) | preferred: [${preferred.join(', ') || 'all'}]`);
