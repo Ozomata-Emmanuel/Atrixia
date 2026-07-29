@@ -417,14 +417,16 @@ const Wishlist = () => {
                   >
                     {/* Image */}
                     <div 
-                      className="relative aspect-square overflow-hidden bg-linear-to-br from-gray-50 to-white cursor-pointer"
+                      className="relative aspect-square overflow-hidden p-5 bg-linear-to-br from-gray-50 to-white cursor-pointer"
                       onClick={() => navigate('/product/' + product.id, { state: { product } })}
                     >
-                      <img
-                        src={product.image}
-                        alt={product.name}
-                        className="w-full h-full object-contain p-6 group-hover:scale-105 transition-transform duration-500"
-                      />
+                      <div className="overflow-hidden w-full h-full rounded-2xl bg-green-500">
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                      </div>
                       {/* Quick Actions Overlay */}
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors duration-300">
                         <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-1 group-hover:translate-y-0">
@@ -465,7 +467,7 @@ const Wishlist = () => {
                       <div className="flex gap-2 mt-4">
                         <button
                           onClick={() => navigate('/product/' + product.id, { state: { product } })}
-                          className="flex-1 py-2.5 bg-gray-50 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-100 transition-all border border-gray-200"
+                          className="flex-1 py-2.5 bg-gray-50 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-100 cursor-pointer transition-all border border-gray-200"
                         >
                           View
                         </button>
@@ -485,7 +487,7 @@ const Wishlist = () => {
               </div>
             ) : (
               /* List View */
-              <div className="space-y-3">
+              <div className="space-y-3 ">
                 {displayedWishlist.map((product) => (
                   <div
                     key={product.id}
@@ -499,7 +501,7 @@ const Wishlist = () => {
                         <img
                           src={product.image}
                           alt={product.name}
-                          className="w-full h-full object-contain p-3"
+                          className="w-full h-full object-cover "
                         />
                       </div>
                       

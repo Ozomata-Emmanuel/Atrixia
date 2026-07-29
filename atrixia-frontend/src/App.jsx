@@ -32,6 +32,8 @@ function App() {
       "wishlist",
       "product",
       "verify-email",
+      "reset-password",
+      "forgot-password",
     ];
     return noNavRoutes.some((route) => location.pathname.includes(route));
   };
@@ -45,6 +47,8 @@ function App() {
       "wishlist",
       "product",
       "verify-email",
+      "reset-password",
+      "forgot-password",
     ];
     return noNavRoutes.some((route) => location.pathname.includes(route));
   };

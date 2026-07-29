@@ -166,6 +166,9 @@ const VerifyEmail = () => {
     <div className="relative min-h-screen flex items-center justify-center py-20 bg-[#f8f8f8] overflow-hidden">
       {/* Grid Background */}
       <AnimatedGridBackground />
+      <div className="absolute top-10 left-10 flex items-center text-3xl">
+        <img onClick={() => navigate(-1)} src="/logo.png" alt="" className='w-20 h-20 cursor-pointer mb-5'/>trixia
+      </div>
 
       <div className="relative z-10 w-full max-w-md">
         <div className="bg-white/90 backdrop-blur-sm p-8 rounded-2xl shadow-xl border border-gray-100/50 text-center">
