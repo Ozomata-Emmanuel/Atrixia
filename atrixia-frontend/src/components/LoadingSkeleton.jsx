@@ -16,32 +16,20 @@ export const ProductCardSkeleton = () => (
   </div>
 );
 
-export const ProductViewSkeleton = () => (
-  <div className="animate-pulse">
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      {/* Image skeleton */}
-      <div className="bg-white/70 backdrop-blur-md rounded-2xl shadow-sm border border-gray-100/50 h-96">
-        <div className="w-full h-full bg-linear-to-r from-gray-200/60 to-gray-100/60" />
-      </div>
-
-      {/* Details skeleton */}
-      <div className="bg-white/70 backdrop-blur-md rounded-2xl shadow-sm border border-gray-100/50 p-8 space-y-6">
-        <div className="space-y-4">
-          <div className="h-8 bg-linear-to-r from-gray-200/60 to-gray-100/60 rounded-lg w-2/3" />
-          <div className="h-5 bg-linear-to-r from-gray-200/60 to-gray-100/60 rounded-lg w-1/4" />
-        </div>
-
-        <div className="h-8 bg-linear-to-r from-gray-200/60 to-gray-100/60 rounded-lg w-1/3" />
-
-        <div className="h-20 bg-linear-to-r from-gray-200/60 to-gray-100/60 rounded-xl" />
-
+const ProductViewSkeleton = () => (
+  <div className="bg-white/90 backdrop-blur-sm rounded-3xl border border-gray-200/60 shadow-xl shadow-gray-200/30 overflow-hidden animate-pulse">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
+      <div className="aspect-square bg-gray-200" />
+      <div className="p-8 lg:p-12 space-y-4">
+        <div className="h-4 bg-gray-200 rounded w-1/4" />
+        <div className="h-8 bg-gray-200 rounded w-3/4" />
+        <div className="h-6 bg-gray-200 rounded w-1/2" />
+        <div className="h-20 bg-gray-200 rounded" />
         <div className="grid grid-cols-2 gap-3">
-          {Array(6).fill(0).map((_, i) => (
-            <div key={i} className="h-16 bg-linear-to-r from-gray-200/60 to-gray-100/60 rounded-xl" />
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-12 bg-gray-200 rounded-xl" />
           ))}
         </div>
-
-        <div className="h-12 bg-linear-to-r from-gray-200/60 to-gray-100/60 rounded-xl" />
       </div>
     </div>
   </div>

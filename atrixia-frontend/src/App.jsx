@@ -65,6 +65,7 @@ function App() {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/ai" element={<AIPage />} />
+        <Route path="/ai/:chatId" element={<AIPage />} />
         <Route path="/product/:id" element={<ProductView />} />
         <Route path="/wishlist" element={<Wishlist />} />
       </Routes>
