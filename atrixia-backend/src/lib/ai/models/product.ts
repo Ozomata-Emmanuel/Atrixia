@@ -1,6 +1,6 @@
 export interface NormalizedProduct {
   id: string;
-  marketplace: 'amazon' | 'ebay' | 'jumia' | 'konga' | 'aliexpress' | 'temu' | 'mock';
+  marketplace: 'amazon' | 'ebay' | 'jumia' | 'konga' | 'aliexpress' | 'temu' | 'jiji' | 'mock';
   title: string;
   brand: string | null;
   price: number;

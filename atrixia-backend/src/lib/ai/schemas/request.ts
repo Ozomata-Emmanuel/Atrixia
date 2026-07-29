@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 // All marketplace identifiers the system supports
-export const AVAILABLE_MARKETPLACES = ['jumia', 'konga', 'ebay', 'aliexpress', 'temu'] as const;
+export const AVAILABLE_MARKETPLACES = ['jumia', 'konga', 'ebay', 'aliexpress', 'temu', 'jiji'] as const;
 export type MarketplaceName = typeof AVAILABLE_MARKETPLACES[number];
 
 export const MessageSchema = z.object({

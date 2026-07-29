@@ -17,6 +17,7 @@ export interface RecommendationRecord {
 
 export interface ConversationThread {
   conversationId: string;
+  userId?: string;          // owner — set when thread is first created
   messages: Message[];
   summary?: string;
   createdAt: Date;

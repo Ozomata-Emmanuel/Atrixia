@@ -100,11 +100,22 @@ export class KongaAdapter implements IMarketplaceAdapter {
             const price = parseFloat(item.special_price || item.final_price || item.price || '0');
 
             // Real Konga image fields from API response
-            const image = item.image_thumbnail_path ||
+            const imagePath = item.image_thumbnail_path ||
               item.image_thumbnail ||
               item.image_full ||
               (Array.isArray(item.images) && item.images[0]) ||
               null;
+
+            // Konga serves product images via Cloudinary; construct full URL if we have a path
+            let image: string | null = null;
+            if (typeof imagePath === 'string' && imagePath.length > 0) {
+              if (imagePath.startsWith('http')) {
+                image = imagePath;
+              } else {
+                // Cloudinary-hosted assets: relative path → absolute CDN URL
+                image = `https://www-konga-com-res.cloudinary.com/w_400,f_auto,fl_lossy,dpr_3.0,q_auto/${imagePath}`;
+              }
+            }
 
             const productUrl = item.url_key
               ? `https://www.konga.com/product/${item.url_key}`

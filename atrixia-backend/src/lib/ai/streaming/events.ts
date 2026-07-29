@@ -15,6 +15,7 @@ export type SSEEventType =
   | 'marketplace_started'
   | 'amazon_complete'
   | 'jumia_complete'
+  | 'jiji_complete'
   | 'ebay_complete'
   | 'ranking_started'
   | 'ranking_finished'

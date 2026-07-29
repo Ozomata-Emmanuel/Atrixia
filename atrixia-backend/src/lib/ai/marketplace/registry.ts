@@ -4,6 +4,7 @@ import { JumiaAdapter } from '../adapters/jumia';
 import { KongaAdapter } from '../adapters/konga';
 import { AliexpressAdapter } from '../adapters/aliexpress';
 import { TemuAdapter } from '../adapters/temu';
+import { JijiAdapter } from '../adapters/jiji';
 
 export class MarketplaceRegistry {
   private static instance: MarketplaceRegistry;
@@ -13,6 +14,7 @@ export class MarketplaceRegistry {
     // Direct-fetch adapters (fast, no proxy needed)
     this.registerAdapter(new JumiaAdapter());
     this.registerAdapter(new KongaAdapter());
+    this.registerAdapter(new JijiAdapter());
     // eBay: uses official API when EBAY_APP_ID is set, ScraperAPI proxy otherwise
     this.registerAdapter(new EbayAdapter());
     // ScraperAPI-dependent adapters

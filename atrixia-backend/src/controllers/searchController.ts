@@ -145,3 +145,57 @@ export const getMarketplaces = (_req: AuthRequest, res: Response) => {
     data: marketplaces,
   });
 };
+
+/**
+ * GET /api/search/conversations
+ * Returns all conversation threads for the authenticated user (chat history).
+ */
+export const getConversations = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw new AppError('Unauthorized', 401);
+
+    const { ConversationRepository } = await import('../repositories/conversationRepository');
+    const convRepo = new ConversationRepository();
+    const threads = await convRepo.listByUser(userId);
+
+    // Return summary view — don't send all message bodies by default
+    const data = threads.map(t => ({
+      conversationId: t.conversationId,
+      messageCount: t.messages.length,
+      lastMessage: t.messages[t.messages.length - 1]?.content?.slice(0, 80) || '',
+      summary: t.summary || null,
+      updatedAt: t.updatedAt,
+      createdAt: t.createdAt,
+    }));
+
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/search/conversations/:conversationId
+ * Returns the full message thread for a specific conversation.
+ */
+export const getConversation = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw new AppError('Unauthorized', 401);
+
+    const { conversationId } = req.params;
+    if (!conversationId) throw new AppError('conversationId is required', 400);
+
+    const { ConversationRepository } = await import('../repositories/conversationRepository');
+    const convRepo = new ConversationRepository();
+    const thread = await convRepo.get(conversationId);
+
+    if (!thread) throw new AppError('Conversation not found', 404);
+    if (thread.userId && thread.userId !== userId) throw new AppError('Forbidden', 403);
+
+    res.status(200).json({ success: true, data: thread });
+  } catch (error) {
+    next(error);
+  }
+};

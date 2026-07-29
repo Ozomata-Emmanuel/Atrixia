@@ -178,7 +178,7 @@ export class AIOrchestrator {
         { role: 'user', content: request.query },
         { role: 'assistant', content: enrichedReport.executiveSummary },
       ];
-      await this.memory.appendMessages(conversationId, outgoingMessages);
+      await this.memory.appendMessages(conversationId, outgoingMessages, userId);
       const persistMs = Date.now() - persistStart;
 
       StructuredLogger.info('[AIOrchestrator] Workflow executed cleanly.', {
@@ -297,7 +297,7 @@ export class AIOrchestrator {
         { role: 'user', content: request.query },
         { role: 'assistant', content: enrichedReport.executiveSummary },
       ];
-      await this.memory.appendMessages(conversationId, outgoingMessages);
+      await this.memory.appendMessages(conversationId, outgoingMessages, userId);
 
       // Persist the full report to the searches table
       await searchHistoryRepo.save({

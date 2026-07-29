@@ -147,7 +147,7 @@ function buildProductInsights(product: NormalizedProduct): {
   // Description
   const parts: string[] = [`Available on ${product.marketplace.toUpperCase()} for $${product.price.toFixed(2)}`];
   if (product.condition && product.condition !== 'new') parts.push(`(${product.condition})`);
-  if (product.seller && product.seller !== 'Jumia Seller' && product.seller !== 'Konga Seller') {
+  if (product.seller && product.seller !== 'Jumia Seller' && product.seller !== 'Konga Seller' && product.seller !== 'Jiji Seller') {
     parts.push(`from ${product.seller}`);
   }
   if (product.shippingEstimate) parts.push(`· ${product.shippingEstimate}`);
@@ -272,7 +272,7 @@ export class ReportGenerator {
       .slice(0, 5);
 
     return {
-      id: `report_${Math.random().toString(36).substring(7)}`,
+      id: crypto.randomUUID(), // valid UUID required for searches table primary key
       executiveSummary: aiTextSummary || `Found ${products.length} products across ${marketplaces.length} marketplace(s). ${eTop ? `Top pick: ${eTop.title.slice(0, 50)} at $${eTop.price.toFixed(2)}.` : ''}`,
       bestOverall:     withReason(eTop,         'overall'),
       bestBudget:      withReason(eBudget,      'budget'),

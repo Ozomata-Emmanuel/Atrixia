@@ -13,7 +13,7 @@ export const users = pgTable('users', {
 });
 
 export const searches = pgTable('searches', {
-  id: uuid('id').primaryKey().defaultRandom(),
+  id: uuid('id').primaryKey(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   query: text('query').notNull(),
   filters: jsonb('filters').default([]),
@@ -33,10 +33,21 @@ export const preferences = pgTable('preferences', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Stores per-conversation chat message history for AI memory
+export const conversations = pgTable('conversations', {
+  id: varchar('id').primaryKey(),           // conversationId e.g. conv_abc123
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  messages: jsonb('messages').notNull().default([]),  // Message[] array
+  summary: text('summary'),                // auto-summarised older messages
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Search = typeof searches.$inferSelect;
 export type NewSearch = typeof searches.$inferInsert;
 export type Preference = typeof preferences.$inferSelect;
 export type NewPreference = typeof preferences.$inferInsert;
-
+export type Conversation = typeof conversations.$inferSelect;
+export type NewConversation = typeof conversations.$inferInsert;

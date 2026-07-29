@@ -64,11 +64,12 @@ export class MemoryManager {
     };
   }
 
-  async appendMessages(conversationId: string, newMessages: Message[]): Promise<void> {
+  async appendMessages(conversationId: string, newMessages: Message[], userId?: string): Promise<void> {
     let thread = await this.repository.getConversationThread(conversationId);
     if (!thread) {
       thread = {
         conversationId,
+        userId,          // bind owner on first creation
         messages: [],
         createdAt: new Date(),
         updatedAt: new Date(),
