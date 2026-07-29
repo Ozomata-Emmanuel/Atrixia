@@ -15,7 +15,8 @@ const MIN_PRODUCTS_THRESHOLD = 4;
 export class MarketplaceManager {
   private registry: MarketplaceRegistry;
   private cache: IMarketplaceCache;
-  private defaultTimeoutMs = 30000;
+  // 15s per adapter — long enough for ScraperAPI, short enough to not hang
+  private defaultTimeoutMs = 15000;
 
   constructor(registry?: MarketplaceRegistry, cache?: IMarketplaceCache) {
     this.registry = registry || MarketplaceRegistry.getInstance();

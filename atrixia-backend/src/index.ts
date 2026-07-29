@@ -5,6 +5,7 @@ import authRoutes from './routes/authRoutes';
 import searchRoutes from './routes/searchRoutes';
 import userRoutes from './routes/userRoutes';
 import { errorHandler } from './middleware/errorHandler';
+import { db } from './db';
 
 dotenv.config();
 
@@ -24,11 +25,11 @@ app.use('/api/search', searchRoutes);
 app.use('/api/user', userRoutes);
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get('/api/health',async (req, res) => {
+  await db.execute('SELECT 1')
   res.status(200).json({ status: 'ok' });
 });
 
-// Error handler (must be last middleware)
 app.use(errorHandler);
 
 app.listen(port, () => {

@@ -18,7 +18,7 @@ import {
 } from '../tools/tools';
 import { Response } from 'express';
 import { SearchHistoryRepository } from '../../../repositories/searchHistoryRepository';
-import { sanitizeQuery, parseQuery } from '../adapters/querySanitizer';
+import { sanitizeQuery } from '../adapters/querySanitizer';
 import { extractIntent, ShoppingIntent } from '../intent/extractor';
 
 // Module-level repo instance (shared, lightweight)
@@ -94,19 +94,18 @@ export class AIOrchestrator {
         preferences: request.context?.preferences || memoryContext.preferences
       });
 
-      // Stage 1: AI Intent Extraction — understand what user actually wants
-      // Fast low-temperature call (~1-2s) that corrects impossible queries,
-      // extracts budget, and provides proper search terms + exclusion list.
+      // Stage 1: Fast intent extraction (zero-latency regex, no AI call)
+      // Corrects impossible queries, extracts budget, sets price floor + exclusions
       let intent: ShoppingIntent | undefined;
       try {
-        intent = await extractIntent(request.query, this.provider);
+        intent = extractIntent(request.query);
         if (intent.queryWarning) {
-          StructuredLogger.warn('[AIOrchestrator] Query warning from intent extractor:', {
+          StructuredLogger.warn('[AIOrchestrator] Query correction:', {
             conversationId, warning: intent.queryWarning,
           });
         }
       } catch (_) {
-        // Non-fatal — fall through to regex-based parsing
+        // Non-fatal
       }
 
       // 2. Marketplace search using structured intent
@@ -242,16 +241,15 @@ export class AIOrchestrator {
       stream.step('loading_preferences', 25, { message: 'Active priority preferences restored.' });
       const preferences = request.context?.preferences || memoryContext.preferences;
 
-      // 3. Stage 1: AI Intent Extraction
-      stream.step('thinking', 30, { message: 'Understanding your query...' });
+      // 3. Stage 1: Fast intent extraction (zero-latency regex, no AI call)
       let streamIntent: ShoppingIntent | undefined;
       try {
-        streamIntent = await extractIntent(request.query, this.provider);
+        streamIntent = extractIntent(request.query);
         if (streamIntent.queryWarning) {
           stream.step('thinking', 35, { message: `Note: ${streamIntent.queryWarning}` });
         }
       } catch (_) {
-        // Non-fatal — continue without intent
+        // Non-fatal
       }
 
       // 4. Search all marketplaces with structured intent
@@ -317,7 +315,7 @@ export class AIOrchestrator {
       });
 
       stream.step('recommendation', 99, { report: enrichedReport });
-      stream.end({ message: 'Decision report compiled successfully.', report: enrichedReport });
+      stream.end({ message: 'Decision report compiled successfully.', report: enrichedReport, conversationId });
     } catch (err: any) {
       StructuredLogger.error('[AIOrchestrator] Stream workflow failed:', {
         conversationId,
