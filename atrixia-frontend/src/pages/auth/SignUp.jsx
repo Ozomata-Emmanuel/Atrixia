@@ -70,7 +70,7 @@ const SignUp = () => {
               Create Account
             </h2>
             <p className="text-[#666666] mt-2 text-sm">
-              Join Attrixia and start shopping smarter
+              Join Atrixia and start shopping smarter
             </p>
           </div>
 

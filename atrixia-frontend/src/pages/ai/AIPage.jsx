@@ -893,7 +893,7 @@ const AIPage = () => {
                 </div>
                 <div className={`${customFilters.length > 0 ? "hidden" : "block"}`}>
                   <h2 className="text-2xl font-bold text-[#1a1a1a] mb-2">
-                    Welcome to Attrixia
+                    Welcome to Atrixia
                   </h2>
                   <p className="text-[#666666] max-w-md">
                     Add filters or type your requirements to get personalized product recommendations
@@ -1091,7 +1091,7 @@ const AIPage = () => {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                    placeholder="Ask Attrixia Agent (e.g., Find me a gaming laptop)"
+                    placeholder="Ask Atrixia Agent (e.g., Find me a gaming laptop)"
                     className="w-full pl-12 pr-12 py-3.5 bg-transparent focus:outline-none text-[#333333] placeholder-[#999999]"
                   />
                   <button

@@ -8,7 +8,7 @@ const HowItWorks = () => {
     {
       number: "01",
       icon: <FiSearch className="text-5xl text-[#009FB8]" />,
-      title: "Tell Attrixia Your Needs",
+      title: "Tell Atrixia Your Needs",
       description: "Share what you're looking for. Add filters like budget, brand, specifications, or any criteria that matter to you.",
       details: [
         "Set your budget range",
@@ -90,7 +90,7 @@ const HowItWorks = () => {
             </div>
             
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-serif-brand font-bold text-[#1a1a1a] mb-4">
-              How Attrixia <span className="text-[#009FB8]">Works</span>
+              How Atrixia <span className="text-[#009FB8]">Works</span>
             </h1>
             <p className="text-lg text-[#666666] max-w-2xl mx-auto">
               Smart shopping starts with understanding your needs and finding the perfect product match
@@ -173,7 +173,7 @@ const HowItWorks = () => {
               to="/signup"
               className="inline-flex items-center justify-center gap-2 bg-linear-to-r from-[#009FB8] to-[#006b7d] text-white px-10 py-4 rounded-2xl font-semibold hover:shadow-lg hover:shadow-[#009FB8]/30 transition border border-[#009FB8]/50"
             >
-              Try Attrixia Now
+              Try Atrixia Now
               <FiArrowRight />
             </Link>
           </div>
