@@ -17,9 +17,10 @@ export class MarketplaceRegistry {
     this.registerAdapter(new JijiAdapter());
     // eBay: uses official API when EBAY_APP_ID is set, ScraperAPI proxy otherwise
     this.registerAdapter(new EbayAdapter());
-    // ScraperAPI-dependent adapters
-    this.registerAdapter(new AliexpressAdapter());
-    this.registerAdapter(new TemuAdapter());
+    // ScraperAPI JS-render required — disabled until paid tier is enabled
+    // To re-enable: call MarketplaceRegistry.getInstance().setAdapterStatus('aliexpress', true)
+    this.registerAdapter(new AliexpressAdapter(), false);
+    this.registerAdapter(new TemuAdapter(), false);
   }
 
   public static getInstance(): MarketplaceRegistry {

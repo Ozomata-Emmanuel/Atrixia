@@ -28,7 +28,7 @@ export const handleChatMessage = async (req: AuthRequest, res: Response, next: N
 
     const { conversationId, message, context } = parsed.data;
     const preferences = await preferenceRepo.get(userId);
-    const activeConvId = conversationId || context?.conversationId || `conv_${Math.random().toString(36).substring(7)}`;
+    const activeConvId = conversationId || context?.conversationId || `conv_${crypto.randomUUID().slice(0, 8)}`;
 
     const memoryContext = await memoryManager.loadContext(userId, activeConvId);
     const mergedMessages = [...memoryContext.messages];

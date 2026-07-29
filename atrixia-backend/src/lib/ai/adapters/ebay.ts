@@ -10,6 +10,12 @@ import { sanitizeQuery } from './querySanitizer';
 function getEbayAppId() { return process.env.EBAY_APP_ID || ''; }
 function getEbayCertId() { return process.env.EBAY_CERT_ID || ''; }
 
+// ─── Token cache ───────────────────────────────────────────────────────────
+// Cache the OAuth token in-process so we don't pay for a token round-trip on
+// every single search call. eBay tokens last ~2 hours; we refresh at 110 min.
+let _cachedToken: string | null = null;
+let _tokenExpiresAt = 0; // epoch ms
+
 // Rotating User-Agent pool to reduce HTML scrape 403 rate
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -34,7 +40,18 @@ export class EbayAdapter implements IMarketplaceAdapter {
     return this._searchViaHtml(clean, options);
   }
 
+  // ─── OAuth token (cached, with 10s fetch timeout) ─────────────────────────
+  /** Pre-warm the token at startup — called from index.ts after server starts. */
+  async warmupToken(): Promise<void> {
+    await this._getAppToken();
+  }
+
   private async _getAppToken(): Promise<string | null> {
+    // Return cached token if still valid
+    if (_cachedToken && Date.now() < _tokenExpiresAt) {
+      return _cachedToken;
+    }
+
     const clientId = getEbayAppId();
     const clientSecret = getEbayCertId();
     if (!clientId || !clientSecret) return null;
@@ -48,27 +65,39 @@ export class EbayAdapter implements IMarketplaceAdapter {
           Authorization: `Basic ${credentials}`,
         },
         body: 'grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope',
+        signal: AbortSignal.timeout(10_000),
       });
+
       if (!res.ok) {
         const errText = await res.text();
-        console.warn(`[EbayAdapter] Token fetch failed ${res.status}: ${errText.slice(0, 200)}`);
+        console.warn(`[EbayAdapter] Token fetch failed ${res.status}: ${errText.slice(0, 300)}`);
         return null;
       }
-      const json = await res.json() as { access_token?: string };
-      return json.access_token || null;
+
+      const json = await res.json() as { access_token?: string; expires_in?: number };
+      _cachedToken = json.access_token || null;
+      // Cache for (expires_in - 600) seconds, default 110 min
+      const ttlSec = (json.expires_in ?? 7200) - 600;
+      _tokenExpiresAt = Date.now() + ttlSec * 1000;
+
+      if (_cachedToken) {
+        console.log('[EbayAdapter] OAuth token obtained and cached.');
+      }
+      return _cachedToken;
     } catch (err: any) {
       console.error('[EbayAdapter] Token fetch error:', err.message);
       return null;
     }
   }
 
+  // ─── Official Browse API path ──────────────────────────────────────────────
   private async _searchViaApi(
     query: string,
     options?: { category?: string; region?: string }
   ): Promise<NormalizedProduct[]> {
     const token = await this._getAppToken();
     if (!token) {
-      console.warn('[EbayAdapter] Could not get OAuth token, falling back to HTML scrape.');
+      console.warn('[EbayAdapter] No OAuth token — falling back to HTML scrape.');
       return this._searchViaHtml(query, options);
     }
 
@@ -82,52 +111,67 @@ export class EbayAdapter implements IMarketplaceAdapter {
           'Content-Type': 'application/json',
           'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
         },
+        signal: AbortSignal.timeout(10_000),
       });
+
       if (!res.ok) {
-        console.warn(`[EbayAdapter] Browse API returned ${res.status}`);
-        return [];
+        const body = await res.text();
+        console.warn(`[EbayAdapter] Browse API ${res.status}: ${body.slice(0, 200)}`);
+        // If token was rejected (401), clear cache so next call re-fetches
+        if (res.status === 401) {
+          _cachedToken = null;
+          _tokenExpiresAt = 0;
+        }
+        return this._searchViaHtml(query, options);
       }
+
       const json = await res.json() as { itemSummaries?: any[] };
       const items = json.itemSummaries || [];
+      console.log(`[EbayAdapter] Browse API returned ${items.length} items for "${query}"`);
 
-      return items.map((item: any) => {
-        const price = parseFloat(item.price?.value || '0');
-        const shippingOptions = item.shippingOptions?.[0];
-        const shippingCost = parseFloat(shippingOptions?.shippingCost?.value || '0');
+      return items
+        .filter((item: any) => item.price?.value)
+        .map((item: any) => {
+          const price = parseFloat(item.price?.value || '0');
+          const shippingOptions = item.shippingOptions?.[0];
+          const shippingCost = parseFloat(shippingOptions?.shippingCost?.value || '0');
 
-        return {
-          id: `ebay_${item.itemId}`,
-          marketplace: 'ebay' as const,
-          title: item.title || '',
-          brand: item.brand || null,
-          price,
-          currency: item.price?.currency || 'USD',
-          image: item.image?.imageUrl || null,
-          productUrl: item.itemWebUrl || '',
-          seller: item.seller?.username || 'eBay Seller',
-          sellerRating: item.seller?.feedbackPercentage
-            ? parseFloat(item.seller.feedbackPercentage)
-            : null,
-          reviewCount: item.seller?.feedbackScore || 0,
-          shippingCost,
-          shippingEstimate: shippingCost === 0 ? 'Free Shipping' : `Shipping: $${shippingCost}`,
-          availability: item.itemAffiliateWebUrl !== undefined,
-          condition: item.condition?.toLowerCase().includes('new') ? 'new'
-            : item.condition?.toLowerCase().includes('refurbished') ? 'refurbished'
-            : 'used',
-          category: options?.category || item.categories?.[0]?.categoryName || 'General',
-          attributes: {},
-          confidence: 80,
-          rawData: {},
-        };
-      });
+          return {
+            id: `ebay_${item.itemId}`,
+            marketplace: 'ebay' as const,
+            title: item.title || '',
+            brand: item.brand || null,
+            price,
+            currency: item.price?.currency || 'USD',
+            image: item.image?.imageUrl || null,
+            productUrl: item.itemWebUrl || '',
+            seller: item.seller?.username || 'eBay Seller',
+            sellerRating: item.seller?.feedbackPercentage
+              ? parseFloat(item.seller.feedbackPercentage)
+              : null,
+            reviewCount: item.seller?.feedbackScore || 0,
+            shippingCost,
+            shippingEstimate: shippingCost === 0 ? 'Free Shipping' : `Shipping: $${shippingCost.toFixed(2)}`,
+            availability: true,
+            condition: item.condition?.toLowerCase().includes('new') ? 'new'
+              : item.condition?.toLowerCase().includes('refurb') ? 'refurbished'
+              : 'used',
+            category: options?.category || item.categories?.[0]?.categoryName || 'General',
+            attributes: {},
+            confidence: 85,
+            rawData: {},
+            description: item.shortDescription || null,
+            pros: [],
+            cons: [],
+          } satisfies NormalizedProduct;
+        });
     } catch (err: any) {
-      console.error('[EbayAdapter] API error:', err.message);
-      return [];
+      console.error('[EbayAdapter] API search error:', err.message);
+      return this._searchViaHtml(query, options);
     }
   }
 
-  // ----- HTML scraping fallback (via ScraperAPI if key present) -----
+  // ─── HTML scraping fallback (via ScraperAPI) ───────────────────────────────
   private async _searchViaHtml(
     query: string,
     options?: { category?: string; region?: string }
@@ -137,15 +181,15 @@ export class EbayAdapter implements IMarketplaceAdapter {
 
     let html: string;
     try {
-      // Use ScraperAPI plain proxy to bypass eBay's bot-detection
       html = await scraperFetch(targetUrl, { render: false, country: 'us' });
     } catch (err: any) {
-      console.error('[EbayAdapter] Network error:', err.message);
+      console.error('[EbayAdapter] HTML scrape error:', err.message);
       return [];
     }
 
-    if (html.includes('robot') || html.includes('captcha') || html.includes('punish')) {
-      console.warn(`[EbayAdapter] Bot-check detected. ${!hasScraperKey() ? 'Set SCRAPER_API_KEY in .env to bypass.' : 'ScraperAPI key present — check response.'}`);
+    if (html.length < 5000 || html.includes('robot') || html.includes('captcha')) {
+      console.warn(`[EbayAdapter] Bot-check page detected (${html.length} bytes). ` +
+        (hasScraperKey() ? 'ScraperAPI present but blocked.' : 'Add SCRAPER_API_KEY to .env.'));
       return [];
     }
 
@@ -174,7 +218,7 @@ export class EbayAdapter implements IMarketplaceAdapter {
         ).toLowerCase();
         const condition: 'new' | 'refurbished' | 'used' =
           conditionRaw.includes('brand new') || conditionRaw.includes('new with') ? 'new'
-          : conditionRaw.includes('refurbished') ? 'refurbished'
+          : conditionRaw.includes('refurb') ? 'refurbished'
           : 'used';
 
         const sellerText = $(el).find('.s-item__seller-info-text').text();
@@ -191,7 +235,7 @@ export class EbayAdapter implements IMarketplaceAdapter {
         }
 
         products.push({
-          id: `ebay_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+          id: `ebay_html_${Date.now()}_${Math.random().toString(36).substring(7)}`,
           marketplace: 'ebay',
           title,
           brand: title.match(/^([A-Z][a-zA-Z]+)/)?.[1] || null,
@@ -203,17 +247,21 @@ export class EbayAdapter implements IMarketplaceAdapter {
           sellerRating,
           reviewCount,
           shippingCost,
-          shippingEstimate: shippingCost === 0 ? 'Free Shipping' : `Shipping: $${shippingCost}`,
+          shippingEstimate: shippingCost === 0 ? 'Free Shipping' : `Shipping: $${shippingCost.toFixed(2)}`,
           availability: true,
           condition,
           category: options?.category || 'General',
           attributes: {},
-          confidence: 80,
+          confidence: 75,
           rawData: {},
+          description: null,
+          pros: [],
+          cons: [],
         });
       } catch (_) {}
     });
 
+    console.log(`[EbayAdapter] HTML scrape: ${products.length} products for "${query}"`);
     return products.slice(0, 3);
   }
 

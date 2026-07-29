@@ -201,10 +201,10 @@ export function extractIntent(query: string): ShoppingIntent {
     }
   }
 
-  // 2. Extract budget
+  // 2. Extract budget — supports $, ₦, £, €, plain numbers after budget keywords
   let budgetMax: number | null = null;
-  const bm = q.match(/(?:under|below|less\s+than|up\s+to|within|around)\s+\$?([\d,]+(?:\.\d+)?)(k?)\b/i)
-          || q.match(/\$\s*([\d,]+(?:\.\d+)?)(k?)\b/i);
+  const bm = q.match(/(?:under|below|less\s+than|up\s+to|within|around)\s+[₦$£€]?\s*([\d,]+(?:\.\d+)?)(k?)\b/i)
+          || q.match(/[₦$£€]\s*([\d,]+(?:\.\d+)?)(k?)\b/i);
   if (bm) {
     let val = parseFloat(bm[1].replace(/,/g, ''));
     if (bm[2]?.toLowerCase() === 'k') val *= 1000;

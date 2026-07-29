@@ -115,6 +115,9 @@ export class JumiaAdapter implements IMarketplaceAdapter {
           attributes: originalPrice ? { originalPrice } : {},
           confidence: 80,
           rawData: { express: isExpress },
+          description: null,
+          pros: [],
+          cons: [],
         });
       } catch (_) {
         // Skip malformed items silently

@@ -157,6 +157,9 @@ export class TemuAdapter implements IMarketplaceAdapter {
           attributes: {},
           confidence: 70,
           rawData: {},
+          description: null,
+          pros: [],
+          cons: [],
         });
       } catch (_) {}
     });
@@ -215,6 +218,9 @@ export class TemuAdapter implements IMarketplaceAdapter {
           attributes: {},
           confidence: 70,
           rawData: {},
+          description: null,
+          pros: [],
+          cons: [],
         };
       })
       .filter((p) => p.price > 0);

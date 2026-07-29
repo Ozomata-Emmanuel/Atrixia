@@ -25,8 +25,8 @@ app.use('/api/search', searchRoutes);
 app.use('/api/user', userRoutes);
 
 // Health check
-app.get('/api/health',async (req, res) => {
-  await db.execute('SELECT 1')
+app.get('/api/health', async (req, res) => {
+  await db.execute('SELECT 1');
   res.status(200).json({ status: 'ok' });
 });
 
@@ -34,4 +34,13 @@ app.use(errorHandler);
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
+
+  // Warm up the eBay OAuth token so the first user search doesn't pay
+  // the ~1s token round-trip cost. Fire-and-forget — never blocks startup.
+  import('./lib/ai/adapters/ebay').then(({ EbayAdapter }) => {
+    const adapter = new EbayAdapter();
+    adapter.warmupToken().then(() => {
+      console.log('[Startup] eBay OAuth token pre-warmed.');
+    }).catch(() => {/* silently ignored */});
+  }).catch(() => {/* silently ignored */});
 });

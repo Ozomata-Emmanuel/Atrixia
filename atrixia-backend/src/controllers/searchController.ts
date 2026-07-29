@@ -49,24 +49,19 @@ export const createSearch = async (req: AuthRequest, res: Response, next: NextFu
       await orchestrator.processQueryStream(userId, { query, context: queryContext }, res);
     } else {
       const result = await orchestrator.processQuery(userId, { query, context: queryContext });
-      
+
       if (!result.success) {
         throw new AppError(result.error || 'AI Search processing failed', 500);
       }
 
-      const searchSessionId = result.report?.id || `search_${Math.random().toString(36).substring(7)}`;
-      await searchHistoryRepo.save({
-        id: searchSessionId,
-        query,
-        timestamp: new Date(),
-        resultsCount: result.report?.alternatives.length || 0,
-        userId,
-        results: result.report,
-      });
-
+      // processQuery already persists to history internally — no double-save needed
       res.status(200).json({
         success: true,
-        data: result.report,
+        data: {
+          ...result.report,
+          conversationId: queryContext.conversationId,
+          searchId: result.report?.id,
+        },
       });
     }
   } catch (error) {
@@ -103,16 +98,31 @@ export const getSearch = async (req: AuthRequest, res: Response, next: NextFunct
 export const getHistory = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.userId;
-    if (!userId) {
-      throw new AppError('Unauthorized', 401);
-    }
+    if (!userId) throw new AppError('Unauthorized', 401);
 
     const list = await searchHistoryRepo.listByUser(userId);
 
-    res.status(200).json({
-      success: true,
-      data: list,
-    });
+    // Shape the response like a ChatGPT sidebar:
+    // Each item has an id, the query as "title", a short preview, timestamp,
+    // and the top recommendation so the user can see what they found at a glance.
+    const data = list.map((item: any) => ({
+      id: item.id,
+      title: item.query,
+      preview: item.summary?.executiveSummary?.slice(0, 120) || null,
+      bestOverall: item.summary?.bestOverall
+        ? {
+            title: item.summary.bestOverall.title,
+            price: item.summary.bestOverall.price,
+            currency: item.summary.bestOverall.currency,
+            image: item.summary.bestOverall.image,
+            marketplace: item.summary.bestOverall.marketplace,
+          }
+        : null,
+      resultsCount: item.resultsCount,
+      createdAt: item.timestamp,
+    }));
+
+    res.status(200).json({ success: true, data });
   } catch (error) {
     next(error);
   }
@@ -130,6 +140,7 @@ export const getMarketplaces = (_req: AuthRequest, res: Response) => {
   const metadata: Record<string, { label: string; region: string; description: string }> = {
     jumia:      { label: 'Jumia',       region: 'Nigeria / Africa',  description: 'Leading African e-commerce marketplace' },
     konga:      { label: 'Konga',       region: 'Nigeria',           description: 'Nigerian online shopping platform' },
+    jiji:       { label: 'Jiji',        region: 'Nigeria / Africa',  description: 'Top classifieds marketplace for new & used items' },
     ebay:       { label: 'eBay',        region: 'US / Global',       description: 'Global marketplace with new & used items' },
     aliexpress: { label: 'AliExpress',  region: 'Global',            description: 'Affordable products shipped worldwide' },
     temu:       { label: 'Temu',        region: 'US / Global',       description: 'Budget-friendly products from global sellers' },

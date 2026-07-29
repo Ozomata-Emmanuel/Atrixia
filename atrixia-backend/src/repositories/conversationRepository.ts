@@ -1,6 +1,6 @@
 import { db } from '../db';
 import { conversations } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { ConversationThread } from '../lib/ai/memory/history';
 import { Message } from '../lib/ai/types/ai';
 
@@ -61,7 +61,7 @@ export class ConversationRepository {
       .select()
       .from(conversations)
       .where(eq(conversations.userId, userId))
-      .orderBy(conversations.updatedAt);
+      .orderBy(desc(conversations.updatedAt));
 
     return records.map(rec => ({
       conversationId: rec.id,

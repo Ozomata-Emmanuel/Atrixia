@@ -149,6 +149,9 @@ export class AliexpressAdapter implements IMarketplaceAdapter {
           attributes: {},
           confidence: 70,
           rawData: {},
+          description: null,
+          pros: [],
+          cons: [],
         });
       } catch (_) {}
     });
@@ -219,6 +222,9 @@ export class AliexpressAdapter implements IMarketplaceAdapter {
           attributes: {},
           confidence: 75,
           rawData: {},
+          description: null,
+          pros: [],
+          cons: [],
         };
       })
       .filter((p) => p.price > 0);

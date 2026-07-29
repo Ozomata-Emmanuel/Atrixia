@@ -18,38 +18,10 @@ import {
 } from '../tools/tools';
 import { Response } from 'express';
 import { SearchHistoryRepository } from '../../../repositories/searchHistoryRepository';
-import { sanitizeQuery } from '../adapters/querySanitizer';
 import { extractIntent, ShoppingIntent } from '../intent/extractor';
 
-// Module-level repo instance (shared, lightweight)
+// Shared repo — lightweight, no connection per instance
 const searchHistoryRepo = new SearchHistoryRepository();
-
-// Strict schema mapping for JSON Mode
-const responseSchema = {
-  type: 'OBJECT',
-  properties: {
-    summary: { type: 'STRING' },
-    recommendation: { type: 'STRING' },
-    reasoning: { type: 'STRING' },
-    pros: { type: 'ARRAY', items: { type: 'STRING' } },
-    cons: { type: 'ARRAY', items: { type: 'STRING' } },
-    alternatives: { type: 'ARRAY', items: { type: 'STRING' } },
-    warnings: { type: 'ARRAY', items: { type: 'STRING' } },
-    confidence: { type: 'STRING' },
-    next_questions: { type: 'ARRAY', items: { type: 'STRING' } }
-  },
-  required: [
-    'summary',
-    'recommendation',
-    'reasoning',
-    'pros',
-    'cons',
-    'alternatives',
-    'warnings',
-    'confidence',
-    'next_questions'
-  ]
-};
 
 export class AIOrchestrator {
   private provider: IAIProvider;
@@ -70,60 +42,41 @@ export class AIOrchestrator {
     this.registry.registerTool(new VisionTool());
   }
 
+  // ─── Non-streaming path ────────────────────────────────────────────────────
+
   async processQuery(
     userId: string,
     request: AIRequest
   ): Promise<{ success: boolean; report?: RecommendationReport; error?: string }> {
-    const startTime = Date.now();
-    const conversationId = request.context?.conversationId || `conv_${Math.random().toString(36).substring(7)}`;
-    
+    const t0 = Date.now();
+    const conversationId =
+      request.context?.conversationId || `conv_${crypto.randomUUID().slice(0, 8)}`;
+
     try {
-      StructuredLogger.info('[AIOrchestrator] Restoring dialogue memory context...', {
-        userId,
-        conversationId,
-      });
+      // ── Step 1+2: load memory + extract intent in parallel ────────────────
+      const [memoryContext, intent] = await Promise.all([
+        this.memory.loadContext(userId, conversationId),
+        Promise.resolve(this._extractIntent(request.query)),
+      ]);
 
-      // 1. Restore memory & preferences
-      const memoryContext = await this.registry.executeTool('MemoryTool', {
-        userId,
-        conversationId,
-      });
-      const memoryMs = Date.now() - startTime;
-
-      const preferences = await this.registry.executeTool('PreferenceTool', {
-        preferences: request.context?.preferences || memoryContext.preferences
-      });
-
-      // Stage 1: Fast intent extraction (zero-latency regex, no AI call)
-      // Corrects impossible queries, extracts budget, sets price floor + exclusions
-      let intent: ShoppingIntent | undefined;
-      try {
-        intent = extractIntent(request.query);
-        if (intent.queryWarning) {
-          StructuredLogger.warn('[AIOrchestrator] Query correction:', {
-            conversationId, warning: intent.queryWarning,
-          });
-        }
-      } catch (_) {
-        // Non-fatal
+      if (intent?.queryWarning) {
+        StructuredLogger.warn('[AIOrchestrator] Query correction applied', {
+          conversationId,
+          warning: intent.queryWarning,
+        });
       }
 
-      // 2. Marketplace search using structured intent
-      const searchStart = Date.now();
+      const preferences = request.context?.preferences ?? memoryContext.preferences;
+
+      // ── Step 3: parallel marketplace search ───────────────────────────────
       const rawProducts = await this.manager.searchAll(request.query, {
         currency: preferences?.currency || 'USD',
         marketplaces: request.context?.marketplaces,
         intent,
       });
-      const marketplaceMs = Date.now() - searchStart;
 
-      // 3. Score and Rank — pass budgetMax so price scoring is budget-aware
-      const rankStart = Date.now();
-      const rankingResult: RankingResult = RankingEngine.rank(
-        rawProducts, preferences, intent?.budgetMax
-      );
-      const rankingMs = Date.now() - rankStart;
-      // 4. Build Dynamically composed Prompt
+      // ── Step 4: rank + build prompt (CPU-only, instant) ───────────────────
+      const rankingResult = RankingEngine.rank(rawProducts, preferences, intent?.budgetMax);
       const systemInstruction = PromptBuilder.buildSystemPrompt(
         { ...memoryContext, preferences },
         rawProducts,
@@ -131,95 +84,89 @@ export class AIOrchestrator {
       );
       const messages = PromptBuilder.buildMessages(request.query, memoryContext);
 
-      // 5. Invoke Gemini with structured JSON Mode constraints
-      const inferenceStart = Date.now();
-      let retryCount = 0;
+      // ── Step 5: AI inference ──────────────────────────────────────────────
       let aiResult;
-      
+      let retryCount = 0;
       while (true) {
         try {
           aiResult = await this.provider.generate(messages, {
             temperature: 0.15,
             systemInstruction,
             responseMimeType: 'application/json',
-            // responseSchema, // Disabled to prevent fetch failed timeout with Gemma
           });
-          
-          // Verify JSON structure parses
-          JSON.parse(aiResult.text);
+          JSON.parse(aiResult.text); // validate
           break;
         } catch (jsonErr: any) {
           retryCount++;
           if (retryCount > 1) {
-            throw new Error(`Inference returned malformed JSON response schema after retry: ${jsonErr.message}`);
+            throw new Error(`AI returned malformed JSON after retry: ${jsonErr.message}`);
           }
-          StructuredLogger.warn('[AIOrchestrator] Gemini JSON parsing failed, retrying once...', {
+          StructuredLogger.warn('[AIOrchestrator] JSON parse failed, retrying once', {
             conversationId,
             error: jsonErr.message,
           });
         }
       }
-      
-      const inferenceMs = Date.now() - inferenceStart;
 
-      // 6. Generate structured Recommendation Report
-      const validationStart = Date.now();
+      // ── Step 6: build report ──────────────────────────────────────────────
       const rawJson = JSON.parse(aiResult.text);
-      const report = ReportGenerator.generate(rankingResult, rawJson.summary || rawJson.recommendation);
-
-      // Merge per-product AI analysis into the report
-      const aiProducts: AIProductAnalysis[] = Array.isArray(rawJson.products) ? rawJson.products : [];
+      const report = ReportGenerator.generate(
+        rankingResult,
+        rawJson.summary || rawJson.recommendation
+      );
+      const aiProducts: AIProductAnalysis[] = Array.isArray(rawJson.products)
+        ? rawJson.products
+        : [];
       const enrichedReport = ReportGenerator.mergeAIProductAnalysis(report, aiProducts);
-      const validationMs = Date.now() - validationStart;
 
-      // 7. Persist responses to memory
-      const persistStart = Date.now();
-      const outgoingMessages: Message[] = [
-        { role: 'user', content: request.query },
-        { role: 'assistant', content: enrichedReport.executiveSummary },
-      ];
-      await this.memory.appendMessages(conversationId, outgoingMessages, userId);
-      const persistMs = Date.now() - persistStart;
+      // ── Step 7: persist memory + search history in parallel ───────────────
+      await Promise.all([
+        this.memory.appendMessages(
+          conversationId,
+          [
+            { role: 'user', content: request.query },
+            { role: 'assistant', content: enrichedReport.executiveSummary },
+          ],
+          userId
+        ),
+        searchHistoryRepo
+          .save({
+            id: enrichedReport.id,
+            query: request.query,
+            timestamp: new Date(),
+            resultsCount: rawProducts.length,
+            userId,
+            results: enrichedReport,
+          })
+          .catch((err: any) =>
+            StructuredLogger.warn('[AIOrchestrator] Search history save failed', {
+              conversationId,
+              error: err.message,
+            })
+          ),
+      ]);
 
-      StructuredLogger.info('[AIOrchestrator] Workflow executed cleanly.', {
+      StructuredLogger.info('[AIOrchestrator] processQuery complete', {
         userId,
         conversationId,
-        latencyMs: Date.now() - startTime,
-        metadata: {
-          promptTokens: 0, // SDK handles this internally
-          retryCount,
-        },
-        timing: {
-          memoryMs,
-          marketplaceMs,
-          rankingMs,
-          inferenceMs,
-          validationMs,
-          persistMs,
-        },
+        latencyMs: Date.now() - t0,
+        products: rawProducts.length,
+        retryCount,
       });
 
-      return {
-        success: true,
-        report: enrichedReport,
-      };
+      return { success: true, report: enrichedReport };
     } catch (err: any) {
-      StructuredLogger.error('[AIOrchestrator] Workflow exception encountered.', {
+      StructuredLogger.error('[AIOrchestrator] processQuery failed', {
         conversationId,
         userId,
-        error: {
-          code: 'ORCHESTRATOR_WORKFLOW_ERROR',
-          message: err.message || String(err),
-          stack: err.stack,
-        },
+        error: err.message,
+        stack: err.stack,
       });
-
-      return {
-        success: false,
-        error: err.message || String(err),
-      };
+      return { success: false, error: err.message || String(err) };
     }
   }
+
+  // ─── SSE streaming path ────────────────────────────────────────────────────
 
   async processQueryStream(
     userId: string,
@@ -227,44 +174,51 @@ export class AIOrchestrator {
     res: Response
   ): Promise<void> {
     const stream = new SSEStreamCoordinator(res);
-    const conversationId = request.context?.conversationId || `conv_${Math.random().toString(36).substring(7)}`;
-    
-    // Initialize SSE headers + flush immediately so the client connection opens
+    const t0 = Date.now();
+    const conversationId =
+      request.context?.conversationId || `conv_${crypto.randomUUID().slice(0, 8)}`;
+
+    // Open SSE connection immediately — client sees activity right away
     stream.start();
 
     try {
-      // 1. Load memory
-      stream.step('retrieving_memory', 15, { message: 'Conversation memory context restored.' });
-      const memoryContext = await this.memory.loadContext(userId, conversationId);
+      // ── Steps 1+2: memory + intent extraction in parallel ─────────────────
+      // These two have zero dependency on each other — run together
+      stream.step('retrieving_memory', 15, { message: 'Restoring conversation context...' });
 
-      // 2. Preferences
-      stream.step('loading_preferences', 25, { message: 'Active priority preferences restored.' });
-      const preferences = request.context?.preferences || memoryContext.preferences;
+      const [memoryContext, intent] = await Promise.all([
+        this.memory.loadContext(userId, conversationId),
+        Promise.resolve(this._extractIntent(request.query)),
+      ]);
 
-      // 3. Stage 1: Fast intent extraction (zero-latency regex, no AI call)
-      let streamIntent: ShoppingIntent | undefined;
-      try {
-        streamIntent = extractIntent(request.query);
-        if (streamIntent.queryWarning) {
-          stream.step('thinking', 35, { message: `Note: ${streamIntent.queryWarning}` });
-        }
-      } catch (_) {
-        // Non-fatal
+      if (intent?.queryWarning) {
+        stream.step('thinking', 22, { message: `Note: ${intent.queryWarning}` });
       }
 
-      // 4. Search all marketplaces with structured intent
-      stream.step('searching_marketplaces', 40, { message: 'Concurrently searching online catalogs...' });
+      const preferences = request.context?.preferences ?? memoryContext.preferences;
+
+      stream.step('loading_preferences', 25, { message: 'Preferences loaded.' });
+
+      // ── Step 3: marketplace search (the slow part — all adapters in parallel)
+      stream.step('searching_marketplaces', 30, {
+        message: 'Searching Jumia, Konga, Jiji, eBay simultaneously...',
+      });
+
       const rawProducts = await this.manager.searchAll(request.query, {
         currency: preferences?.currency || 'USD',
         marketplaces: request.context?.marketplaces,
-        intent: streamIntent,
+        intent,
       });
 
-      // 5. Quality-first ranking with budget awareness
-      stream.step('ranking_products', 65, { message: 'Ranking candidates by quality, seller trust, and value...' });
-      const rankingResult = RankingEngine.rank(rawProducts, preferences, streamIntent?.budgetMax);
-      // 6. Build Dynamic composed Prompt
-      stream.step('analyzing_tradeoffs', 75, { message: 'Formulating trade-off analysis...' });
+      stream.step('ranking_products', 62, {
+        message: `Ranking ${rawProducts.length} products by quality, value, and seller trust...`,
+      });
+
+      // ── Step 4: rank + build prompt (instant, CPU-only) ───────────────────
+      const rankingResult = RankingEngine.rank(rawProducts, preferences, intent?.budgetMax);
+
+      stream.step('analyzing_tradeoffs', 70, { message: 'Formulating trade-off analysis...' });
+
       const systemInstruction = PromptBuilder.buildSystemPrompt(
         { ...memoryContext, preferences },
         rawProducts,
@@ -272,57 +226,91 @@ export class AIOrchestrator {
       );
       const messages = PromptBuilder.buildMessages(request.query, memoryContext);
 
-      // 7. Invoke Gemini JSON mode
-      stream.step('generating_explanation', 85, { message: 'Compiling structured shopping response...' });
+      // ── Step 5: AI inference ──────────────────────────────────────────────
+      stream.step('generating_explanation', 78, {
+        message: 'Gemma is writing your recommendation...',
+      });
+
       const aiResult = await this.provider.generate(messages, {
         temperature: 0.15,
         systemInstruction,
         responseMimeType: 'application/json',
-        // responseSchema, // Disabled to prevent fetch failed timeout with Gemma
       });
 
-      // 8. Validate output
-      stream.step('validating_response', 92, { message: 'Validating structural schemas...' });
-      const rawJson = JSON.parse(aiResult.text);
-      const report = ReportGenerator.generate(rankingResult, rawJson.summary || rawJson.recommendation);
+      // ── Step 6: build report ──────────────────────────────────────────────
+      stream.step('validating_response', 92, { message: 'Finalising report...' });
 
-      // Merge per-product AI analysis
-      const aiProducts: AIProductAnalysis[] = Array.isArray(rawJson.products) ? rawJson.products : [];
+      const rawJson = JSON.parse(aiResult.text);
+      const report = ReportGenerator.generate(
+        rankingResult,
+        rawJson.summary || rawJson.recommendation
+      );
+      const aiProducts: AIProductAnalysis[] = Array.isArray(rawJson.products)
+        ? rawJson.products
+        : [];
       const enrichedReport = ReportGenerator.mergeAIProductAnalysis(report, aiProducts);
 
-      // 9. Persist to DB + memory
-      stream.step('saving_results', 98, { message: 'Saving results to database...' });
+      // ── Step 7: persist memory + search history in parallel ───────────────
+      stream.step('saving_results', 96, { message: 'Saving to your history...' });
 
-      const outgoingMessages: Message[] = [
-        { role: 'user', content: request.query },
-        { role: 'assistant', content: enrichedReport.executiveSummary },
-      ];
-      await this.memory.appendMessages(conversationId, outgoingMessages, userId);
-
-      // Persist the full report to the searches table
-      await searchHistoryRepo.save({
-        id: enrichedReport.id,
-        query: request.query,
-        timestamp: new Date(),
-        resultsCount: rawProducts.length,
-        userId,
-        results: enrichedReport,
-      }).catch((err: any) => {
-        StructuredLogger.warn('[AIOrchestrator] Failed to persist search to DB:', {
+      await Promise.all([
+        this.memory.appendMessages(
           conversationId,
-          error: err.message,
-        });
+          [
+            { role: 'user', content: request.query },
+            { role: 'assistant', content: enrichedReport.executiveSummary },
+          ],
+          userId
+        ),
+        searchHistoryRepo
+          .save({
+            id: enrichedReport.id,
+            query: request.query,
+            timestamp: new Date(),
+            resultsCount: rawProducts.length,
+            userId,
+            results: enrichedReport,
+          })
+          .catch((err: any) =>
+            StructuredLogger.warn('[AIOrchestrator] History save failed', {
+              conversationId,
+              error: err.message,
+            })
+          ),
+      ]);
+
+      StructuredLogger.info('[AIOrchestrator] processQueryStream complete', {
+        userId,
+        conversationId,
+        latencyMs: Date.now() - t0,
+        products: rawProducts.length,
       });
 
+      // Emit the full report — include conversationId + searchId for frontend linking
       stream.step('recommendation', 99, { report: enrichedReport });
-      stream.end({ message: 'Decision report compiled successfully.', report: enrichedReport, conversationId });
+      stream.end({
+        message: 'Report ready.',
+        report: enrichedReport,
+        conversationId,
+        searchId: enrichedReport.id,  // lets frontend call GET /api/search/:id later
+      });
     } catch (err: any) {
-      StructuredLogger.error('[AIOrchestrator] Stream workflow failed:', {
+      StructuredLogger.error('[AIOrchestrator] processQueryStream failed', {
         conversationId,
         userId,
         error: err.message,
       });
       stream.error(err.message || String(err));
+    }
+  }
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+
+  private _extractIntent(query: string): ShoppingIntent | undefined {
+    try {
+      return require('../intent/extractor').extractIntent(query);
+    } catch {
+      return undefined;
     }
   }
 }
