@@ -96,13 +96,14 @@ const Wishlist = () => {
     // Apply filters
     if (activeFilters.length > 0) {
       filtered = filtered.filter(product => {
-        const price = parseInt(product.price.replace(/[^0-9]/g, ''));
+        const price = typeof product.price === 'number' ? product.price : parseFloat(product.price);
+        const rating = product.sellerRating || product.rating || 0;
         return activeFilters.some(filter => {
           switch(filter) {
             case 'under100k': return price < 100000;
             case 'under500k': return price < 500000;
-            case '4star': return product.rating >= 4;
-            case '3star': return product.rating >= 3;
+            case '4star': return rating >= 4;
+            case '3star': return rating >= 3;
             default: return true;
           }
         });
@@ -113,20 +114,20 @@ const Wishlist = () => {
     switch(sortBy) {
       case 'price-low':
         return filtered.sort((a, b) => {
-          const priceA = parseInt(a.price.replace(/[^0-9]/g, ''));
-          const priceB = parseInt(b.price.replace(/[^0-9]/g, ''));
+          const priceA = typeof a.price === 'number' ? a.price : parseFloat(a.price);
+          const priceB = typeof b.price === 'number' ? b.price : parseFloat(b.price);
           return priceA - priceB;
         });
       case 'price-high':
         return filtered.sort((a, b) => {
-          const priceA = parseInt(a.price.replace(/[^0-9]/g, ''));
-          const priceB = parseInt(b.price.replace(/[^0-9]/g, ''));
+          const priceA = typeof a.price === 'number' ? a.price : parseFloat(a.price);
+          const priceB = typeof b.price === 'number' ? b.price : parseFloat(b.price);
           return priceB - priceA;
         });
       case 'rating':
-        return filtered.sort((a, b) => b.rating - a.rating);
+        return filtered.sort((a, b) => (b.sellerRating || b.rating || 0) - (a.sellerRating || a.rating || 0));
       case 'name':
-        return filtered.sort((a, b) => a.name.localeCompare(b.name));
+        return filtered.sort((a, b) => (a.title || a.name || '').localeCompare(b.title || b.name || ''));
       default:
         return filtered;
     }
@@ -158,7 +159,7 @@ const Wishlist = () => {
               </p>
               {productToDelete && (
                 <p className="text-sm font-medium text-gray-700 bg-gray-50 rounded-xl p-3 mb-6">
-                  "{productToDelete.name}"
+                  "{productToDelete?.title || productToDelete?.name}"
                 </p>
               )}
               <div className="flex gap-3">
@@ -417,14 +418,17 @@ const Wishlist = () => {
                   >
                     {/* Image */}
                     <div 
-                      className="relative aspect-square overflow-hidden bg-linear-to-br from-gray-50 to-white cursor-pointer"
+                      className="relative aspect-square overflow-hidden p-5 bg-linear-to-br from-gray-50 to-white cursor-pointer"
                       onClick={() => navigate('/product/' + product.id, { state: { product } })}
                     >
-                      <img
-                        src={product.image}
-                        alt={product.name}
-                        className="w-full h-full object-contain p-6 group-hover:scale-105 transition-transform duration-500"
-                      />
+                      <div className="overflow-hidden w-full h-full rounded-2xl">
+                        <img
+                          src={product.image}
+                          alt={product.title || product.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          onError={(e) => { e.target.src = 'https://via.placeholder.com/300x300?text=No+Image'; }}
+                        />
+                      </div>
                       {/* Quick Actions Overlay */}
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors duration-300">
                         <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-1 group-hover:translate-y-0">
@@ -446,31 +450,36 @@ const Wishlist = () => {
                       <h3 
                         className="font-semibold text-gray-900 cursor-pointer hover:text-gray-600 transition line-clamp-1 text-sm"
                         onClick={() => navigate('/product/' + product.id, { state: { product } })}
+                        title={product.title || product.name}
                       >
-                        {product.name}
+                        {product.title || product.name}
                       </h3>
                       
                       <div className="flex items-center justify-between mt-2">
-                        <span className="text-lg font-bold text-gray-900">{product.price}</span>
-                        <div className="flex items-center gap-1">
-                          <FiStar className="fill-amber-400 text-amber-400 text-xs" />
-                          <span className="text-xs font-medium text-gray-600">{product.rating}</span>
-                        </div>
+                        <span className="text-lg font-bold text-gray-900">
+                          {product.currency || '$'}{typeof product.price === 'number' ? product.price.toLocaleString() : product.price}
+                        </span>
+                        {(product.sellerRating || product.rating) && (
+                          <div className="flex items-center gap-1">
+                            <FiStar className="fill-amber-400 text-amber-400 text-xs" />
+                            <span className="text-xs font-medium text-gray-600">{product.sellerRating || product.rating}</span>
+                          </div>
+                        )}
                       </div>
 
-                      {product.store && (
-                        <p className="text-xs text-gray-400 mt-2 truncate">{product.store}</p>
+                      {product.marketplace && (
+                        <p className="text-xs text-gray-400 mt-2 truncate">{product.marketplace}</p>
                       )}
 
                       <div className="flex gap-2 mt-4">
                         <button
                           onClick={() => navigate('/product/' + product.id, { state: { product } })}
-                          className="flex-1 py-2.5 bg-gray-50 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-100 transition-all border border-gray-200"
+                          className="flex-1 py-2.5 bg-gray-50 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-100 cursor-pointer transition-all border border-gray-200"
                         >
                           View
                         </button>
                         <a
-                          href={product.storeLink || '#'}
+                          href={product.productUrl || '#'}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
@@ -485,7 +494,7 @@ const Wishlist = () => {
               </div>
             ) : (
               /* List View */
-              <div className="space-y-3">
+              <div className="space-y-3 ">
                 {displayedWishlist.map((product) => (
                   <div
                     key={product.id}
@@ -498,8 +507,9 @@ const Wishlist = () => {
                       >
                         <img
                           src={product.image}
-                          alt={product.name}
-                          className="w-full h-full object-contain p-3"
+                          alt={product.title || product.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => { e.target.src = 'https://via.placeholder.com/100x100?text=No+Image'; }}
                         />
                       </div>
                       
@@ -507,20 +517,27 @@ const Wishlist = () => {
                         <h3 
                           className="font-semibold text-gray-900 cursor-pointer hover:text-gray-600 transition line-clamp-1"
                           onClick={() => navigate('/product/' + product.id, { state: { product } })}
+                          title={product.title || product.name}
                         >
-                          {product.name}
+                          {product.title || product.name}
                         </h3>
                         <div className="flex items-center gap-3 mt-2">
-                          <span className="text-lg font-bold text-gray-900">{product.price}</span>
-                          <span className="text-gray-300">·</span>
-                          <div className="flex items-center gap-1">
-                            <FiStar className="fill-amber-400 text-amber-400 text-xs" />
-                            <span className="text-sm font-medium text-gray-600">{product.rating}</span>
-                          </div>
-                          {product.store && (
+                          <span className="text-lg font-bold text-gray-900">
+                            {product.currency || '$'}{typeof product.price === 'number' ? product.price.toLocaleString() : product.price}
+                          </span>
+                          {(product.sellerRating || product.rating) && (
                             <>
                               <span className="text-gray-300">·</span>
-                              <span className="text-sm text-gray-400">{product.store}</span>
+                              <div className="flex items-center gap-1">
+                                <FiStar className="fill-amber-400 text-amber-400 text-xs" />
+                                <span className="text-sm font-medium text-gray-600">{product.sellerRating || product.rating}</span>
+                              </div>
+                            </>
+                          )}
+                          {product.marketplace && (
+                            <>
+                              <span className="text-gray-300">·</span>
+                              <span className="text-sm text-gray-400">{product.marketplace}</span>
                             </>
                           )}
                         </div>
@@ -534,7 +551,7 @@ const Wishlist = () => {
                           View
                         </button>
                         <a
-                          href={product.storeLink || '#'}
+                          href={product.productUrl || '#'}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-2.5 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-xl transition-all"
@@ -557,7 +574,7 @@ const Wishlist = () => {
         )}
       </div>
 
-      <style jsx>{`
+      <style>{`
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(5px); }
           to { opacity: 1; transform: translateY(0); }

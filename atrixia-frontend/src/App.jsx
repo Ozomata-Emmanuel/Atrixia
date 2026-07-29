@@ -32,6 +32,8 @@ function App() {
       "wishlist",
       "product",
       "verify-email",
+      "reset-password",
+      "forgot-password",
     ];
     return noNavRoutes.some((route) => location.pathname.includes(route));
   };
@@ -45,6 +47,8 @@ function App() {
       "wishlist",
       "product",
       "verify-email",
+      "reset-password",
+      "forgot-password",
     ];
     return noNavRoutes.some((route) => location.pathname.includes(route));
   };
@@ -61,6 +65,7 @@ function App() {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/ai" element={<AIPage />} />
+        <Route path="/ai/:chatId" element={<AIPage />} />
         <Route path="/product/:id" element={<ProductView />} />
         <Route path="/wishlist" element={<Wishlist />} />
       </Routes>

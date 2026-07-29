@@ -1,6 +1,6 @@
 // pages/ai/AIPage.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { authService } from '../../services/authService';
 import { 
@@ -18,6 +18,11 @@ import { mockProducts } from '../../data/mockData';
 import { IoArrowUp } from "react-icons/io5";
 import { IoMdStar } from "react-icons/io";
 import AnimatedGridBackground from '../../components/AnimatedGridBackground';
+
+import { aiService } from '../../services/aiService';
+import ProductCard from '../../components/ai/ProductCard';
+import StreamingProgress from '../../components/ai/StreamingProgress';
+import ReportSummary from '../../components/ai/ReportSummary';
 
 const AIPage = () => {
   const { user, logout } = useAuth();
@@ -40,9 +45,29 @@ const AIPage = () => {
   const [isPreferencesModalOpen, setIsPreferencesModalOpen] = useState(false);
   const [tempPreferences, setTempPreferences] = useState(null);
   const [preferencesModalClosing, setPreferencesModalClosing] = useState(false);
+  const [streamProgress, setStreamProgress] = useState(null);
+  const [streamProducts, setStreamProducts] = useState([]);
+  const [reportData, setReportData] = useState(null);
+  const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef(null);
   const sidebarRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const { chatId } = useParams();
+
+  // Load chat from history when chatId changes
+  useEffect(() => {
+    if (!chatId) return;
+    
+    const saved = JSON.parse(localStorage.getItem('attrixia_chat_history') || '[]');
+    const chat = saved.find(c => c.id === chatId || String(c.id) === chatId);
+    
+    if (chat) {
+      setMessages(chat.messages || []);
+      if (chat.reportData) {
+        setReportData(chat.reportData);
+      }
+    }
+  }, [chatId]);
 
   // Fetch user preferences on mount
   useEffect(() => {
@@ -135,10 +160,8 @@ const AIPage = () => {
 
     let userMessage = input.trim();
     
-    // Prepare all filters (both custom and constant preferences)
     const allFilters = [...customFilters];
     
-    // Add constant preferences as filters if they exist
     const constantFilters = [];
     if (userPreferences) {
       if (userPreferences.budgetMin && userPreferences.budgetMax) {
@@ -172,43 +195,113 @@ const AIPage = () => {
     setMessages(prev => [...prev, newMessage]);
     setInput('');
     setIsTyping(true);
+    setIsStreaming(true);
+    setStreamProgress(null);
+    setStreamProducts([]);
+    setReportData(null);
 
-    // Send query to backend (commented out, just logging)
-    await authService.sendAiQuery(userMessage, customFilters, userPreferences);
+    // Create AI placeholder message
+    const aiMessageId = Date.now() + 1;
+    setMessages(prev => [...prev, {
+      id: aiMessageId,
+      type: 'ai',
+      content: '',
+      products: [],
+      isStreaming: true,
+      streamProgress: null,
+      streamProducts: [],
+      reportData: null,
+    }]);
 
-    setTimeout(() => {
-      const aiResponse = {
-        id: Date.now() + 1,
-        type: 'ai',
-        content: `Based on your requirements${userPreferences ? ' and preferences' : ''}, I've found ${mockProducts.length} products that match your criteria. Here are the best options for you:`,
-        products: mockProducts.map(product => ({
-          ...product,
-          // Add preference-based highlighting
-          isBestPrice: userPreferences?.prioritizePrice && product.price === Math.min(...mockProducts.map(p => parseFloat(p.price.replace('$', '').replace(',', '')))),
-          isBestQuality: userPreferences?.prioritizeQuality && product.rating >= 4.5,
-        }))
-      };
-      setMessages(prev => [...prev, aiResponse]);
-      setIsTyping(false);
-      
-      // Save to chat history
-      const newChat = {
-        id: Date.now(),
-        title: userMessage.slice(0, 30) + (userMessage.length > 30 ? '...' : '') || 'Product Search',
-        timestamp: new Date().toISOString(),
-        messages: [...messages, newMessage, aiResponse]
-      };
-      const updatedHistory = [newChat, ...chatHistory];
-      setChatHistory(updatedHistory);
-      localStorage.setItem('attrixia_chat_history', JSON.stringify(updatedHistory));
-      
-      // Clear filters after sending
-      setCustomFilters([]);
-    }, 1500);
+    // Use simulated streaming (replace with real service when backend is ready)
+    aiService.simulateStream(
+      userMessage,
+      customFilters,
+      userPreferences,
+      {
+        onProgress: (progressData) => {
+          setStreamProgress(progressData);
+          setMessages(prev => prev.map(msg => 
+            msg.id === aiMessageId 
+              ? { ...msg, streamProgress: progressData }
+              : msg
+          ));
+        },
+        
+        onProductFound: (data) => {
+          // Extract the actual product from the wrapped object
+          const actualProduct = data.product || data;
+          setStreamProducts(prev => [...prev, actualProduct]);
+          setMessages(prev => prev.map(msg => 
+            msg.id === aiMessageId 
+              ? { ...msg, streamProducts: [...(msg.streamProducts || []), actualProduct] }
+              : msg
+          ));
+        },
+        
+        onReportUpdate: (reportUpdate) => {
+          setReportData(prev => ({ ...prev, ...reportUpdate }));
+        },
+        
+        onComplete: (completeData) => {
+          const report = completeData.report;
+          setReportData(report);
+          setIsTyping(false);
+          setIsStreaming(false);
+          
+          setMessages(prev => prev.map(msg => 
+            msg.id === aiMessageId 
+              ? {
+                  ...msg,
+                  content: report.executiveSummary,
+                  products: report.rankedProducts || [],
+                  reportData: report,
+                  isStreaming: false,
+                  streamProgress: { progress: 100, message: 'Complete' },
+                }
+              : msg
+          ));
+          
+          // Save to chat history
+          const newChatId = Date.now();
+          const newChat = {
+            id: newChatId,
+            title: userMessage.slice(0, 30) + (userMessage.length > 30 ? '...' : '') || 'Product Search',
+            timestamp: new Date().toISOString(),
+            messages: [...messages, newMessage],
+            reportData: report,
+          };
+          const updatedHistory = [newChat, ...chatHistory].slice(0, 50);
+          setChatHistory(updatedHistory);
+          localStorage.setItem('attrixia_chat_history', JSON.stringify(updatedHistory));
+          
+          // Navigate to the new chat URL
+          navigate(`/ai/${newChatId}`, { replace: true });
+        },
+        
+        onError: (errorMessage) => {
+          setIsTyping(false);
+          setIsStreaming(false);
+          setMessages(prev => prev.map(msg => 
+            msg.id === aiMessageId 
+              ? {
+                  ...msg,
+                  content: `Sorry, something went wrong: ${errorMessage}. Please try again.`,
+                  isStreaming: false,
+                  error: true,
+                }
+              : msg
+          ));
+        },
+      }
+    );
+
+    // Clear filters after sending
+    setCustomFilters([]);
   };
 
   const loadChat = (chat) => {
-    setMessages(chat.messages);
+    navigate(`/ai/${chat.id}`);
     setIsSidebarOpen(false);
   };
 
@@ -241,6 +334,8 @@ const AIPage = () => {
     setCustomFilters([]);
     setIsSidebarOpen(false);
     setExpandedMessageId(null);
+    setReportData(null);
+    navigate('/ai');
   };
 
   const handleProductClick = (product) => {
@@ -691,10 +786,18 @@ const AIPage = () => {
                   <div
                     key={chat.id}
                     onClick={() => loadChat(chat)}
-                    className="group flex items-center justify-between p-2 hover:bg-white/60 rounded-xl cursor-pointer transition border border-transparent hover:border-gray-200/50"
+                    className={`group flex items-center justify-between p-2 hover:bg-white/60 rounded-xl cursor-pointer transition border ${
+                      String(chat.id) === chatId 
+                        ? 'bg-white/80 border-transparent shadow-xs' 
+                        : 'border-transparent hover:border-gray-200/50'
+                    }`}
                   >
                     <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                      <span className="text-sm text-[#333333] truncate capitalize">{chat.title}</span>
+                      <span className={`text-sm truncate capitalize text-[#333333] ${
+                        String(chat.id) === chatId ? 'font-medium' : ''
+                      }`}>
+                        {chat.title}
+                      </span>
                     </div>
                     <button
                       onClick={(e) => openDeleteModal(chat.id, e)}
@@ -870,97 +973,74 @@ const AIPage = () => {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex flex-col gap-4">
-                        <div className="bg-white/80 backdrop-blur-md rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] shadow-md border border-gray-200/50">
-                          <p className="text-sm text-[#333333] leading-relaxed">{msg.content}</p>
-                        </div>
-                        {msg.products && (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-2">
-                            {msg.products.map((product) => (
-                              <div
-                                key={product.id}
-                                onClick={() => handleProductClick(product)}
-                                className="group bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden cursor-pointer hover:shadow-xl hover:border-[#009FB8]/30 transition-all duration-300 transform hover:-translate-y-1"
-                              >
-                                {/* Product Image with badges */}
-                                <div className="relative h-48 overflow-hidden bg-linear-to-br from-gray-50 to-gray-100">
-                                  <img 
-                                    src={product.image} 
-                                    alt={product.name}
-                                    className="w-full h-full object-cover group-hover:scale-110 transition duration-500"
-                                  />
-                                  
-                                  {/* Badges */}
-                                  <div className="absolute top-3 left-3 flex flex-col gap-1.5">
-                                    {product.isBestPrice && (
-                                      <span className="bg-emerald-500 text-white text-xs px-2.5 py-1 rounded-full font-medium shadow-lg flex items-center gap-1">
-                                        <FiDollarSign className="text-xs" />
-                                        Best Price
-                                      </span>
-                                    )}
-                                    {product.isBestQuality && (
-                                      <span className="bg-yellow-500 text-white text-xs px-2.5 py-1 rounded-full font-medium shadow-lg flex items-center gap-1">
-                                        <FiStar className="text-xs" />
-                                        Top Rated
-                                      </span>
-                                    )}
-                                  </div>
+                      <div className="flex flex-col gap-3 w-full max-w-[95%]">
+                        {/* Streaming Progress */}
+                        {msg.isStreaming && msg.streamProgress && (
+                          <StreamingProgress progress={msg.streamProgress} />
+                        )}
+
+                        {/* Main AI Message Content */}
+                        {msg.content && !msg.isStreaming && (
+                          <div className="bg-white/80 backdrop-blur-md rounded-2xl rounded-tl-sm px-4 py-3 shadow-md border border-gray-200/50">
+                            <p className="text-sm text-[#333333] leading-relaxed">{msg.content}</p>
+                          </div>
+                        )}
+
+                        {/* Error State */}
+                        {msg.error && (
+                          <div className="bg-red-50/80 backdrop-blur-md rounded-2xl rounded-tl-sm px-4 py-3 shadow-md border border-red-200/50">
+                            <p className="text-sm text-red-600 leading-relaxed">{msg.content}</p>
+                          </div>
+                        )}
+
+                        {/* Report Summary - shows after streaming completes */}
+                        {msg.reportData && !msg.isStreaming && (
+                          <ReportSummary report={msg.reportData} />
+                        )}
+
+                        {/* Products Grid */}
+                        {(msg.streamProducts?.length > 0 || msg.products?.length > 0) && (
+                          <div className="mt-2">
+                            {/* Streaming label */}
+                            {msg.isStreaming && (
+                              <div className="flex items-center gap-2 mb-3">
+                                <div className="flex gap-1">
+                                  <span className="w-1.5 h-1.5 bg-[#009FB8] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                                  <span className="w-1.5 h-1.5 bg-[#009FB8] rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
+                                  <span className="w-1.5 h-1.5 bg-[#009FB8] rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
                                 </div>
-                                
-                                {/* Product Info */}
-                                <div className="p-4">
-                                  <h4 className="font-semibold text-[#1a1a1a] text-sm line-clamp-1 group-hover:text-[#009FB8] transition-colors mb-2">
-                                    {product.name}
-                                  </h4>
-                                  
-                                  <div className="flex items-center justify-between mb-3">
-                                    <p className="text-[#009FB8] font-bold text-lg">
-                                      {product.price}
-                                    </p>
-                                    <div className="flex items-center gap-1 bg-yellow-50 px-2 py-0.5 rounded-full">
-                                      <IoMdStar className="text-yellow-500 text-sm" />
-                                      <span className="text-xs font-medium text-yellow-700">{product.rating}</span>
-                                    </div>
-                                  </div>
-                                  
-                                  <div className="flex items-center gap-2 text-xs text-[#999999] flex-wrap">
-                                    <span className="bg-gray-100 px-2 py-1 rounded-full">{product.ram}</span>
-                                    <span className="bg-gray-100 px-2 py-1 rounded-full">
-                                      {product.processor.split(' ').slice(0,2).join(' ')}
-                                    </span>
-                                  </div>
-                                  
-                                  {/* Preference Match Indicator */}
-                                  {(product.isBestPrice || product.isBestQuality) && (
-                                    <div className="mt-3 pt-3 border-t border-gray-100">
-                                      <div className="flex items-center gap-1.5 text-xs">
-                                        <FiTrendingUp className="text-[#009FB8]" />
-                                        <span className="text-[#009FB8] font-medium">
-                                          Matches your preferences
-                                        </span>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
+                                <span className="text-xs text-[#009FB8] font-medium">
+                                  Finding products... ({(msg.streamProducts || msg.products).length} found)
+                                </span>
                               </div>
-                            ))}
+                            )}
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {(msg.streamProducts || msg.products).map((product) => (
+                                <ProductCard 
+                                  key={product.id} 
+                                  product={product} 
+                                  isStreaming={msg.isStreaming}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Typing indicator when no products yet */}
+                        {msg.isStreaming && !msg.streamProducts?.length && !msg.streamProgress && (
+                          <div className="bg-white/80 backdrop-blur-md rounded-2xl rounded-tl-sm px-4 py-3 shadow-md border border-gray-200/50">
+                            <div className="flex gap-1">
+                              <span className="w-2 h-2 bg-[#009FB8] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <span className="w-2 h-2 bg-[#009FB8] rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
+                              <span className="w-2 h-2 bg-[#009FB8] rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
+                            </div>
                           </div>
                         )}
                       </div>
                     )}
                   </div>
                 ))}
-                {isTyping && (
-                  <div className="flex items-center gap-2 text-[#999999]">
-                    <div className="bg-white/80 backdrop-blur-md rounded-2xl rounded-tl-sm px-4 py-3 shadow-md border border-gray-200/50">
-                      <div className="flex gap-1">
-                        <span className="w-2 h-2 bg-linear-to-b from-[#009FB8] to-[#006b7d] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-2 h-2 bg-linear-to-b from-[#009FB8] to-[#006b7d] rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
-                        <span className="w-2 h-2 bg-linear-to-b from-[#009FB8] to-[#006b7d] rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
-                      </div>
-                    </div>
-                  </div>
-                )}
                 <div ref={messagesEndRef} />
               </>
             )}

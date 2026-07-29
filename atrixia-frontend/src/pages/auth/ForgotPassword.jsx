@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FiMail, FiArrowLeft } from 'react-icons/fi';
+import AnimatedGridBackground from '../../components/AnimatedGridBackground';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
@@ -14,28 +15,9 @@ const ForgotPassword = () => {
 
   return (
     <div className="relative min-h-[calc(100vh-64px)] flex items-center justify-center py-20 bg-linear-to-br from-gray-50 to-gray-100">
-      <div className="absolute inset-0 overflow-hidden">
-        <div
-          className="absolute -left-15 -top-15 animate-[moveGrid_25s_linear_infinite]"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(40, 100px)",
-            gridAutoRows: "100px",
-          }}
-        >
-          {Array.from({ length: 1200 }).map((_, i) => (
-            <div
-              key={i}
-              className=""
-              style={{
-                backgroundColor:
-                  Math.random() > 0.5
-                    ? `hsla(${Math.random() * 360}, 80%, 60%, 0.3)`
-                    : "transparent",
-              }}
-            />
-          ))}
-        </div>
+      <AnimatedGridBackground />
+      <div className="absolute top-10 left-10 flex items-center text-3xl">
+        <img onClick={() => navigate(-1)} src="/logo.png" alt="" className='w-20 h-20 cursor-pointer mb-5'/>trixia
       </div>
 
       <div className="relative z-10 w-full max-w-md">
