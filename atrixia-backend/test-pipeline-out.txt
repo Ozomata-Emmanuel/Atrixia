@@ -1,0 +1,23 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+Error: Transform failed with 4 errors:
+/home/kingjoker/Documents/Atrixia/atrixia-backend/test-pipeline.ts:158:9: ERROR: The symbol "pass" has already been declared
+/home/kingjoker/Documents/Atrixia/atrixia-backend/test-pipeline.ts:159:9: ERROR: The symbol "fail" has already been declared
+/home/kingjoker/Documents/Atrixia/atrixia-backend/test-pipeline.ts:160:9: ERROR: The symbol "section" has already been declared
+/home/kingjoker/Documents/Atrixia/atrixia-backend/test-pipeline.ts:162:15: ERROR: The symbol "main" has already been declared
+    at failureErrorWithLog (/home/kingjoker/Documents/Atrixia/atrixia-backend/node_modules/tsx/node_modules/esbuild/lib/main.js:1748:15)
+    at /home/kingjoker/Documents/Atrixia/atrixia-backend/node_modules/tsx/node_modules/esbuild/lib/main.js:1017:50
+    at responseCallbacks.<computed> (/home/kingjoker/Documents/Atrixia/atrixia-backend/node_modules/tsx/node_modules/esbuild/lib/main.js:884:9)
+    at handleIncomingPacket (/home/kingjoker/Documents/Atrixia/atrixia-backend/node_modules/tsx/node_modules/esbuild/lib/main.js:939:12)
+    at Socket.readFromStdout (/home/kingjoker/Documents/Atrixia/atrixia-backend/node_modules/tsx/node_modules/esbuild/lib/main.js:862:7)
+    at Socket.emit (node:events:509:20)
+    at addChunk (node:internal/streams/readable:568:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:519:3)
+    at Readable.push (node:internal/streams/readable:399:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+  name: 'TransformError'
+}
+
+Node.js v26.4.0

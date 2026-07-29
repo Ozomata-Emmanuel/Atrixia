@@ -18,7 +18,8 @@ import {
 } from '../tools/tools';
 import { Response } from 'express';
 import { SearchHistoryRepository } from '../../../repositories/searchHistoryRepository';
-import { sanitizeQuery } from '../adapters/querySanitizer';
+import { sanitizeQuery, parseQuery } from '../adapters/querySanitizer';
+import { extractIntent, ShoppingIntent } from '../intent/extractor';
 
 // Module-level repo instance (shared, lightweight)
 const searchHistoryRepo = new SearchHistoryRepository();
@@ -93,28 +94,36 @@ export class AIOrchestrator {
         preferences: request.context?.preferences || memoryContext.preferences
       });
 
-      // Hackathon Query Sanitizer: strip conversational filler so marketplace
-      // search engines receive clean keywords.
-      const searchKeywords = sanitizeQuery(request.query);
+      // Stage 1: AI Intent Extraction — understand what user actually wants
+      // Fast low-temperature call (~1-2s) that corrects impossible queries,
+      // extracts budget, and provides proper search terms + exclusion list.
+      let intent: ShoppingIntent | undefined;
+      try {
+        intent = await extractIntent(request.query, this.provider);
+        if (intent.queryWarning) {
+          StructuredLogger.warn('[AIOrchestrator] Query warning from intent extractor:', {
+            conversationId, warning: intent.queryWarning,
+          });
+        }
+      } catch (_) {
+        // Non-fatal — fall through to regex-based parsing
+      }
 
-      // 2. Marketplace search (using Jumia concurrently)
+      // 2. Marketplace search using structured intent
       const searchStart = Date.now();
-      const rawProducts = await this.registry.executeTool('MarketplaceSearchTool', {
-        query: searchKeywords || request.query,
-        category: preferences?.prioritizeQuality ? 'Quality' : undefined,
-        region: 'US',
+      const rawProducts = await this.manager.searchAll(request.query, {
         currency: preferences?.currency || 'USD',
+        marketplaces: request.context?.marketplaces,
+        intent,
       });
       const marketplaceMs = Date.now() - searchStart;
 
-      // 3. Score and Rank listings deterministically
+      // 3. Score and Rank — pass budgetMax so price scoring is budget-aware
       const rankStart = Date.now();
-      const rankingResult: RankingResult = await this.registry.executeTool('RankingTool', {
-        products: rawProducts,
-        preferences,
-      });
+      const rankingResult: RankingResult = RankingEngine.rank(
+        rawProducts, preferences, intent?.budgetMax
+      );
       const rankingMs = Date.now() - rankStart;
-
       // 4. Build Dynamically composed Prompt
       const systemInstruction = PromptBuilder.buildSystemPrompt(
         { ...memoryContext, preferences },
@@ -233,19 +242,29 @@ export class AIOrchestrator {
       stream.step('loading_preferences', 25, { message: 'Active priority preferences restored.' });
       const preferences = request.context?.preferences || memoryContext.preferences;
 
-      // 3. Sanitize query — delegates to shared querySanitizer
-      const effectiveQuery = sanitizeQuery(request.query);
+      // 3. Stage 1: AI Intent Extraction
+      stream.step('thinking', 30, { message: 'Understanding your query...' });
+      let streamIntent: ShoppingIntent | undefined;
+      try {
+        streamIntent = await extractIntent(request.query, this.provider);
+        if (streamIntent.queryWarning) {
+          stream.step('thinking', 35, { message: `Note: ${streamIntent.queryWarning}` });
+        }
+      } catch (_) {
+        // Non-fatal — continue without intent
+      }
 
-      // 4. Search
+      // 4. Search all marketplaces with structured intent
       stream.step('searching_marketplaces', 40, { message: 'Concurrently searching online catalogs...' });
-      const rawProducts = await this.manager.searchAll(effectiveQuery, {
+      const rawProducts = await this.manager.searchAll(request.query, {
         currency: preferences?.currency || 'USD',
+        marketplaces: request.context?.marketplaces,
+        intent: streamIntent,
       });
 
-      // 5. Mathematical ranking
-      stream.step('ranking_products', 65, { message: 'Ranking candidates mathematically...' });
-      const rankingResult = RankingEngine.rank(rawProducts, preferences);
-
+      // 5. Quality-first ranking with budget awareness
+      stream.step('ranking_products', 65, { message: 'Ranking candidates by quality, seller trust, and value...' });
+      const rankingResult = RankingEngine.rank(rawProducts, preferences, streamIntent?.budgetMax);
       // 6. Build Dynamic composed Prompt
       stream.step('analyzing_tradeoffs', 75, { message: 'Formulating trade-off analysis...' });
       const systemInstruction = PromptBuilder.buildSystemPrompt(

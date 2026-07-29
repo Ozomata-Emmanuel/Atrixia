@@ -1,17 +1,10 @@
 /**
  * querySanitizer.ts
  *
- * Converts a free-form conversational shopping query into clean keywords
- * that marketplace search engines can understand.
- *
- * Examples:
- *   "comfortable ergonomic chair for home office under $300"  → "ergonomic chair"
- *   "show me the best gaming laptop under $1000"              → "gaming laptop"
- *   "i need a good wireless mouse"                            → "wireless mouse"
- *   "laptop"                                                  → "laptop"  (already clean)
+ * Parses a free-form shopping query into structured intent + clean search keywords.
  */
 
-// Words that add no search value on any marketplace
+// ── Filler words ──────────────────────────────────────────────────────────────
 const FILLER_WORDS = new Set([
   'i', 'me', 'my', 'we', 'our', 'you', 'your',
   'a', 'an', 'the', 'this', 'that', 'these', 'those',
@@ -21,74 +14,168 @@ const FILLER_WORDS = new Set([
   'need', 'want', 'looking', 'find', 'get', 'show', 'give', 'tell',
   'for', 'to', 'of', 'in', 'on', 'at', 'by', 'with', 'from',
   'about', 'into', 'through', 'during', 'before', 'after',
-  'above', 'below', 'between', 'out', 'off', 'over', 'under',
+  'above', 'between', 'out', 'off', 'over',
   'again', 'further', 'then', 'once', 'here', 'there', 'when',
   'where', 'why', 'how', 'all', 'both', 'each', 'few', 'more',
   'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only',
-  'own', 'same', 'so', 'than', 'too', 'very', 'just', 'also',
-  // Shopping-specific filler
-  'best', 'good', 'great', 'nice', 'cheap', 'affordable', 'quality',
-  'budget', 'premium', 'top', 'rated', 'popular', 'recommended',
+  'own', 'same', 'so', 'too', 'very', 'just', 'also',
+  // Shopping-specific filler — NOTE: do NOT include product words like "wireless", "gaming"
   'please', 'something', 'anything', 'item', 'product', 'things',
-  'home', 'office', 'work', 'use', 'used', 'using',
-  'comfortable', 'efficient', 'powerful', 'fast', 'reliable',
-  'high', 'low', 'new', 'old', 'latest', 'modern',
-  'recommend', 'suggest', 'help', 'looking', 'search', 'buy', 'purchase',
+  'recommend', 'suggest', 'help', 'search', 'buy', 'purchase',
+  'show', 'give', 'tell', 'find',
+  'best', 'good', 'great', 'nice', 'cheap', 'affordable', 'quality',
+  'popular', 'recommended', 'top', 'rated',
+  'please', 'can', 'you',
 ]);
 
-// Phrases to strip before tokenising
+// Price / budget phrases to strip
 const STRIP_PHRASES = [
-  /\bunder\s+\$?\d+(\.\d+)?\b/gi,
-  /\bbelow\s+\$?\d+(\.\d+)?\b/gi,
-  /\bless\s+than\s+\$?\d+(\.\d+)?\b/gi,
-  /\bup\s+to\s+\$?\d+(\.\d+)?\b/gi,
-  /\baround\s+\$?\d+(\.\d+)?\b/gi,
-  /\bwithin\s+\$?\d+(\.\d+)?\b/gi,
-  /\$\d+(\.\d+)?k?\b/gi,              // bare prices like $300 or $1.5k
-  /\b\d+(\.\d+)?\s*dollars?\b/gi,
+  /\bunder\s+\$?\d[\d,.]*k?\b/gi,
+  /\bbelow\s+\$?\d[\d,.]*k?\b/gi,
+  /\bless\s+than\s+\$?\d[\d,.]*k?\b/gi,
+  /\bup\s+to\s+\$?\d[\d,.]*k?\b/gi,
+  /\baround\s+\$?\d[\d,.]*k?\b/gi,
+  /\bwithin\s+\$?\d[\d,.]*k?\b/gi,
+  /\$\d[\d,.]*k?\b/gi,
+  /\b\d[\d,.]*\s*dollars?\b/gi,
   /\bshow\s+me\b/gi,
   /\bfind\s+me\b/gi,
   /\bi\s+(need|want|am\s+looking\s+for|would\s+like)\b/gi,
-  /\bcan\s+you\b/gi,
-  /\bplease\b/gi,
+];
+
+// ── Parsed query intent ───────────────────────────────────────────────────────
+export interface ParsedQuery {
+  /** Clean keywords for marketplace search engines */
+  searchKeywords: string;
+  /** Detected product category (e.g. "laptop", "phone") */
+  category: string;
+  /** Budget ceiling in USD if mentioned */
+  budgetMax: number | null;
+  /** Keywords to exclude from results (accessories for this category) */
+  excludeKeywords: string[];
+  /** Original query */
+  raw: string;
+}
+
+// Category keyword → accessory exclusion terms
+const CATEGORY_MAP: { pattern: RegExp; category: string; exclude: string[] }[] = [
+  {
+    pattern: /\blaptop|notebook|macbook|chromebook|thinkpad|elitebook|probook|ultrabook\b/i,
+    category: 'laptop',
+    exclude: ['charger', 'adapter', 'cable', 'bag', 'case', 'sleeve', 'stand', 'cooling pad', 'skin', 'cover', 'screen protector', 'battery', 'power supply', 'ac adapter', 'dc adapter'],
+  },
+  {
+    pattern: /\bphone|smartphone|iphone|android|pixel|galaxy\b/i,
+    category: 'phone',
+    exclude: [
+      'charger', 'cable', 'case', 'cover', 'screen protector', 'holder', 'mount',
+      'earphone', 'power bank', 'battery', 'adapter',
+      // Phone accessories that look like phones
+      'trigger', 'controller', 'gamepad', 'joystick', 'ring light',
+      'pop socket', 'grip', 'stand', 'dock', 'cradle',
+      'tempered glass', 'film', 'lens', 'selfie stick',
+    ],
+  },
+  {
+    pattern: /\btablet|ipad\b/i,
+    category: 'tablet',
+    exclude: ['charger', 'cable', 'case', 'cover', 'keyboard', 'stylus', 'stand', 'screen protector', 'battery', 'adapter'],
+  },
+  {
+    pattern: /\b(gaming\s+)?headphone|headset|earphone|earbud|airpod\b/i,
+    category: 'headphone',
+    exclude: ['case', 'cable', 'adapter', 'stand', 'holder', 'cushion'],
+  },
+  {
+    pattern: /\b(wireless\s+)?mouse\b/i,
+    category: 'mouse',
+    exclude: ['pad', 'mat', 'cable', 'receiver', 'dongle', 'case'],
+  },
+  {
+    pattern: /\bkeyboard\b/i,
+    category: 'keyboard',
+    exclude: ['cable', 'cover', 'skin', 'stand', 'wrist rest'],
+  },
+  {
+    pattern: /\bmonitor|display\b/i,
+    category: 'monitor',
+    exclude: ['cable', 'stand', 'arm', 'mount', 'screen protector'],
+  },
+  {
+    pattern: /\bchair|seat\b/i,
+    category: 'chair',
+    exclude: ['cover', 'cushion', 'mat', 'caster', 'replacement'],
+  },
+  {
+    pattern: /\b(running\s+)?shoe|sneaker|boot|sandal|trainer\b/i,
+    category: 'shoe',
+    exclude: ['lace', 'insole', 'bag', 'box', 'cleaning', 'polish'],
+  },
+  {
+    pattern: /\b\bcpu\b|processor\b/i,
+    category: 'cpu',
+    exclude: ['cooler', 'fan', 'paste', 'thermal', 'bracket', 'socket'],
+  },
+  {
+    pattern: /\btv\b|television\b/i,
+    category: 'tv',
+    exclude: ['remote', 'cable', 'mount', 'stand', 'screen protector', 'bracket'],
+  },
 ];
 
 /**
- * Sanitizes a conversational query into 2-4 clean search keywords.
- *
- * Strategy:
- * 1. Strip known price/filler phrases
- * 2. Tokenise into words
- * 3. Remove single-char tokens and known filler words
- * 4. Return the remaining words joined by space (max 5 words)
- *
- * Falls back to the original query if nothing meaningful is left.
+ * Parses a conversational query into structured intent.
  */
-export function sanitizeQuery(raw: string): string {
+export function parseQuery(raw: string): ParsedQuery {
   let q = raw.trim();
 
-  // Step 1 — strip phrases
+  // Extract budget
+  let budgetMax: number | null = null;
+  const budgetMatch = q.match(/(?:under|below|less\s+than|up\s+to|within|around)\s+\$?([\d,]+(?:\.\d+)?)(k?)\b/i)
+    || q.match(/\$\s*([\d,]+(?:\.\d+)?)(k?)\b/i);
+  if (budgetMatch) {
+    let val = parseFloat(budgetMatch[1].replace(/,/g, ''));
+    if (budgetMatch[2]?.toLowerCase() === 'k') val *= 1000;
+    budgetMax = val;
+  }
+
+  // Detect product category
+  let category = 'general';
+  let excludeKeywords: string[] = [];
+  for (const entry of CATEGORY_MAP) {
+    if (entry.pattern.test(q)) {
+      category = entry.category;
+      excludeKeywords = entry.exclude;
+      break;
+    }
+  }
+
+  // Strip price phrases
   for (const pattern of STRIP_PHRASES) {
     q = q.replace(pattern, ' ');
   }
 
-  // Step 2 — tokenise
+  // Tokenise and remove filler — preserve brand names and product words
   const tokens = q
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, ' ')   // remove punctuation except hyphens
+    .replace(/[^a-z0-9\s\-]/gi, ' ')
     .split(/\s+/)
+    .map((t) => t.toLowerCase().trim())
     .filter(Boolean);
 
-  // Step 3 — remove filler words and single-char tokens
   const keywords = tokens.filter(
     (t) => t.length > 1 && !FILLER_WORDS.has(t)
   );
 
-  if (keywords.length === 0) {
-    // Nothing left — return original query trimmed
-    return raw.trim();
-  }
+  const searchKeywords = keywords.length > 0
+    ? keywords.slice(0, 6).join(' ')
+    : raw.trim();
 
-  // Step 4 — cap at 5 words so search engines don't get confused
-  return keywords.slice(0, 5).join(' ');
+  return { searchKeywords, category, budgetMax, excludeKeywords, raw };
+}
+
+/**
+ * Simple backward-compatible sanitizer — just returns the clean search string.
+ */
+export function sanitizeQuery(raw: string): string {
+  return parseQuery(raw).searchKeywords;
 }

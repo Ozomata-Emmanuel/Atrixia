@@ -46,15 +46,15 @@ export class TemuAdapter implements IMarketplaceAdapter {
 
     // Try __NEXT_DATA__ JSON blob first
     const fromNext = this._extractFromNextData(html, options);
-    if (fromNext && fromNext.length > 0) return fromNext.slice(0, 6);
+    if (fromNext && fromNext.length > 0) return fromNext.slice(0, 3);
 
     // Try window.__INITIAL_STATE__
     const fromState = this._extractFromInitialState(html, options);
-    if (fromState && fromState.length > 0) return fromState.slice(0, 6);
+    if (fromState && fromState.length > 0) return fromState.slice(0, 3);
 
     // HTML fallback
     const fromHtml = this._extractFromHtml(html, clean, options);
-    return fromHtml.slice(0, 6);
+    return fromHtml.slice(0, 3);
   }
 
   private _extractFromNextData(

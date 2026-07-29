@@ -5,8 +5,10 @@ import { scraperFetch, hasScraperKey } from './scraperFetch';
 import { sanitizeQuery } from './querySanitizer';
 
 // eBay Browse API — free with a developer account at developer.ebay.com
-// Set EBAY_APP_ID in .env to enable. Falls back to ScraperAPI/HTML scraping.
-const EBAY_APP_ID = process.env.EBAY_APP_ID || '';
+// Set EBAY_APP_ID + EBAY_CERT_ID in .env to enable.
+// Read lazily (inside methods) so dotenv is guaranteed to have loaded.
+function getEbayAppId() { return process.env.EBAY_APP_ID || ''; }
+function getEbayCertId() { return process.env.EBAY_CERT_ID || ''; }
 
 // Rotating User-Agent pool to reduce HTML scrape 403 rate
 const USER_AGENTS = [
@@ -26,17 +28,15 @@ export class EbayAdapter implements IMarketplaceAdapter {
 
   async search(query: string, options?: { category?: string; region?: string }): Promise<NormalizedProduct[]> {
     const clean = sanitizeQuery(query);
-    // Prefer the official API when credentials are configured
-    if (EBAY_APP_ID) {
+    if (getEbayAppId()) {
       return this._searchViaApi(clean, options);
     }
     return this._searchViaHtml(clean, options);
   }
 
-  // ----- eBay Browse API (OAuth app token) -----
   private async _getAppToken(): Promise<string | null> {
-    const clientId = process.env.EBAY_APP_ID || '';
-    const clientSecret = process.env.EBAY_CERT_ID || '';
+    const clientId = getEbayAppId();
+    const clientSecret = getEbayCertId();
     if (!clientId || !clientSecret) return null;
 
     const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
@@ -49,10 +49,15 @@ export class EbayAdapter implements IMarketplaceAdapter {
         },
         body: 'grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope',
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        const errText = await res.text();
+        console.warn(`[EbayAdapter] Token fetch failed ${res.status}: ${errText.slice(0, 200)}`);
+        return null;
+      }
       const json = await res.json() as { access_token?: string };
       return json.access_token || null;
-    } catch {
+    } catch (err: any) {
+      console.error('[EbayAdapter] Token fetch error:', err.message);
       return null;
     }
   }
@@ -209,11 +214,11 @@ export class EbayAdapter implements IMarketplaceAdapter {
       } catch (_) {}
     });
 
-    return products.slice(0, 6);
+    return products.slice(0, 3);
   }
 
   async health(): Promise<'healthy' | 'degraded' | 'offline'> {
-    return EBAY_APP_ID ? 'healthy' : 'degraded';
+    return getEbayAppId() ? 'healthy' : 'degraded';
   }
 
   supportsRegion(region: string): boolean {
