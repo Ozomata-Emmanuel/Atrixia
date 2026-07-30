@@ -16,20 +16,27 @@ const SignUp = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  const [backendError, setBackendError] = useState('');
   const { signup } = useAuth();
   const navigate = useNavigate();
 
   const validate = () => {
     const newErrors = {};
-    if (!formData.fullName) newErrors.fullName = 'Full name is required';
-    else if (formData.fullName.length < 2) newErrors.fullName = 'Name must be at least 2 characters';
     
-    if (!formData.email) newErrors.email = 'Email is required';
+    // Full name validation (matching backend: required, must be string)
+    if (!formData.fullName.trim()) newErrors.fullName = 'Full name is required';
+    else if (formData.fullName.trim().length < 2) newErrors.fullName = 'Name must be at least 2 characters';
+    else if (typeof formData.fullName !== 'string') newErrors.fullName = 'Invalid name format';
+    
+    // Email validation (matching backend: required, valid format)
+    if (!formData.email.trim()) newErrors.email = 'Email is required';
     else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Email is invalid';
     
+    // Password validation (matching backend: required, min 8 chars)
     if (!formData.password) newErrors.password = 'Password is required';
     else if (formData.password.length < 8) newErrors.password = 'Password must be at least 8 characters';
     
+    // Confirm password validation
     if (!formData.confirmPassword) newErrors.confirmPassword = 'Please confirm your password';
     else if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
     
@@ -37,30 +44,58 @@ const SignUp = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setBackendError('');
+    
     if (!validate()) return;
     
     setIsLoading(true);
-    setTimeout(() => {
-      signup(formData.email, formData.password);
-      navigate('/verify-email');
+    
+    try {
+      const result = await signup({
+        fullName: formData.fullName.trim(),
+        email: formData.email.trim(),
+        password: formData.password
+      });
+      
+      if (result.success) {
+        // Store email for verification page
+        sessionStorage.setItem('verificationEmail', formData.email.trim());
+        navigate('/verify-email');
+      } else {
+        // Handle specific backend errors
+        if (result.message?.toLowerCase().includes('already exists')) {
+          setBackendError('An account with this email already exists. Please sign in instead.');
+        } else if (result.message?.toLowerCase().includes('invalid email')) {
+          setErrors(prev => ({ ...prev, email: 'Please enter a valid email address' }));
+        } else if (result.message?.toLowerCase().includes('password')) {
+          setErrors(prev => ({ ...prev, password: result.message }));
+        } else {
+          setBackendError(result.message || 'Signup failed. Please try again.');
+        }
+      }
+    } catch (error) {
+      console.error('[SignUp] Signup error:', error);
+      setBackendError('Unable to connect to server. Please check your internet connection.');
+    } finally {
       setIsLoading(false);
-    }, 800);
+    }
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     if (errors[name]) setErrors({ ...errors, [name]: '' });
+    if (backendError) setBackendError('');
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-64px)] flex items-center justify-center py-20 bg-[#f8f8f8] overflow-hidden">
+    <div className="relative min-h-screen flex items-center justify-center py-20 bg-[#f8f8f8] overflow-hidden">
       {/* Grid Background */}
       <AnimatedGridBackground/>
-      <div className="absolute top-10 left-10 flex items-center text-3xl">
-        <img onClick={() => navigate(-1)} src="/logo.png" alt="" className='w-20 h-20 cursor-pointer mb-5'/>trixia
+      <div className="absolute top-6 left-6 flex items-center text-2xl font-semibold">
+        <img onClick={() => navigate(-1)} src="/logo.png" alt="" className='w-15 h-15 cursor-pointer mb-2'/>trixia
       </div>
 
       <div className="relative z-10 w-full max-w-2xl">
@@ -70,13 +105,13 @@ const SignUp = () => {
               Create Account
             </h2>
             <p className="text-[#666666] mt-2 text-sm">
-              Join Attrixia and start shopping smarter
+              Join Atrixia and start shopping smarter
             </p>
           </div>
 
-          {errors.general && (
-            <div className="bg-red-50 border border-red-200 text-red-600 p-3 rounded-xl mb-4 text-sm">
-              {errors.general}
+          {backendError && (
+            <div className="bg-red-50 border border-red-200 text-red-600 p-4 rounded-xl mb-4 text-sm">
+              {backendError}
             </div>
           )}
 
@@ -94,6 +129,8 @@ const SignUp = () => {
                     errors.fullName ? 'border-red-500' : 'border-gray-200'
                   }`}
                   placeholder="John Doe"
+                  disabled={isLoading}
+                  autoComplete="name"
                 />
               </div>
               {errors.fullName && (
@@ -106,7 +143,7 @@ const SignUp = () => {
               <div className={`relative transition-all ${errors.email ? 'ring-1 ring-red-500 rounded-xl' : ''}`}>
                 <FiMail className="absolute left-3.5 top-3.5 text-[#999999]" />
                 <input
-                  type="text"
+                  type="email"
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
@@ -114,6 +151,8 @@ const SignUp = () => {
                     errors.email ? 'border-red-500' : 'border-gray-200'
                   }`}
                   placeholder="you@example.com"
+                  disabled={isLoading}
+                  autoComplete="email"
                 />
               </div>
               {errors.email && (
@@ -135,6 +174,8 @@ const SignUp = () => {
                       errors.password ? 'border-red-500' : 'border-gray-200'
                     }`}
                     placeholder="Min 8 characters"
+                    disabled={isLoading}
+                    autoComplete="new-password"
                   />
                   <button
                     type="button"
@@ -162,6 +203,8 @@ const SignUp = () => {
                       errors.confirmPassword ? 'border-red-500' : 'border-gray-200'
                     }`}
                     placeholder="Confirm password"
+                    disabled={isLoading}
+                    autoComplete="new-password"
                   />
                   <button
                     type="button"
@@ -180,9 +223,19 @@ const SignUp = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-[#1a1a1a] text-white py-3 rounded-xl font-semibold hover:bg-[#333333] transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-[#1a1a1a] text-white py-3 rounded-xl font-semibold hover:bg-[#333333] transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {isLoading ? 'Creating account...' : 'Create Account'}
+              {isLoading ? (
+                <>
+                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Creating account...
+                </>
+              ) : (
+                'Create Account'
+              )}
             </button>
           </form>
 

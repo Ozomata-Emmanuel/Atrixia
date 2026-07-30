@@ -1,12 +1,12 @@
 // src/services/api.js
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://atrixia.onrender.com/api';
 
 // Create axios instance with credentials
 const api = axios.create({
   baseURL: BASE_URL,
-  withCredentials: true, // Important for cookies/refresh tokens
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -21,16 +21,16 @@ export const publicApi = axios.create({
   },
 });
 
-// Request interceptor for authenticated requests
+// Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
-    // You can add any request modifications here
-    // The refresh token is handled via httpOnly cookies
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 // Response interceptor for handling token refresh
@@ -39,17 +39,19 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // If 401 and haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
       try {
         // Try to refresh the token
-        await publicApi.post('/auth/refresh-token');
-        // Retry the original request
-        return api(originalRequest);
+        const { data } = await publicApi.post('/auth/refresh-token');
+        if (data?.token) {
+          localStorage.setItem('accessToken', data.token);
+          originalRequest.headers.Authorization = `Bearer ${data.token}`;
+          return api(originalRequest);
+        }
       } catch (refreshError) {
-        // Refresh failed - redirect to login
+        localStorage.removeItem('accessToken');
         window.location.href = '/signin';
         return Promise.reject(refreshError);
       }
