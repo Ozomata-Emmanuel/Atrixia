@@ -29,7 +29,7 @@ const ResetPassword = () => {
       
       <div className="absolute top-4 left-4 z-20 flex items-center text-2xl font-semibold">
         <img 
-          onClick={() => navigate(-1)} 
+          onClick={() => navigate("/")} 
           src="/logo.png" 
           alt="Logo" 
           className="w-12 h-12 cursor-pointer mb-2" 

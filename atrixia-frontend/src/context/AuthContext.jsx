@@ -43,14 +43,24 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (email, password) => {
-    const result = await authService.signin({ email, password });
-    
-    if (result.success && result.data?.user) {
-      setUser(result.data.user);
-      setIsAuthenticated(true);
+    setIsLoading(true);
+    try {
+      const response = await authService.signin(email, password);
+      console.log("Login: ", result)
+      if (response.success) {
+        const user = await authService.getCurrentUser();
+        setUser(user);
+        setIsAuthenticated(true);
+        localStorage.setItem('accessToken', response.accessToken);
+        return { success: true };
+      }
+
+      return { success: false, message: response.message };
+    } catch (error) {
+      return { success: false, message: error.message };
+    } finally {
+      setIsLoading(false);
     }
-    
-    return result;
   };
 
   const signup = async (userData) => {

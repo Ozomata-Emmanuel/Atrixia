@@ -1,6 +1,6 @@
 // pages/auth/SignIn.jsx
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { FiMail, FiLock, FiEye, FiEyeOff, FiCheckCircle } from 'react-icons/fi';
 import AnimatedGridBackground from '../../components/AnimatedGridBackground';
@@ -13,9 +13,17 @@ const SignIn = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [backendError, setBackendError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/ai', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   // Check for verified email success message
   useEffect(() => {
@@ -50,13 +58,14 @@ const SignIn = () => {
       console.log(result)
       
       if (result.success) {
-        navigate('/ai');
+        // Get the redirect path from location state, default to '/ai'
+        const from = location.state?.from?.pathname || '/ai';
+        navigate(from, { replace: true });
         console.log(result)
       } else {
         // Handle specific backend error messages
         if (result.message?.toLowerCase().includes('not verified')) {
           setBackendError('Please verify your email first. Check your inbox for the verification code.');
-          // Option to navigate to verify page
           setTimeout(() => {
             navigate(`/verify-email?email=${encodeURIComponent(email)}`);
           }, 2000);
@@ -97,7 +106,7 @@ const SignIn = () => {
       {/* Logo - Positioned at top left, visible on all screen sizes */}
       <div className="absolute top-4 left-4 z-20 flex items-center text-2xl font-semibold">
         <img 
-          onClick={() => navigate(-1)} 
+          onClick={() => navigate("/")} 
           src="/logo.png" 
           alt="Logo" 
           className="w-12 h-12 cursor-pointer mb-2" 
@@ -109,7 +118,7 @@ const SignIn = () => {
       <div className="relative z-10 w-full h-screen md:h-fit max-w-md md:px-4 px-0">
         <div className="md:bg-white/30 h-full backdrop-blur-xs md:p-6 p-8 md:rounded-2xl shadow-xl border border-gray-100/50 flex items-center">
 
-          <div className="">
+          <div className="w-full">
             <div className="text-center mb-8">
               <h2 className="text-3xl font-bold text-[#1a1a1a] font-serif-brand">
                 Welcome Back

@@ -2,7 +2,7 @@
 import React, { memo, useState, useEffect, useRef } from 'react';
 
 /**
- * Array of fun, engaging fallback messages that rotate when the
+ * Array of professional, engaging fallback messages that rotate when the
  * actual progress message hasn't changed for a while.
  */
 const STUCK_MESSAGES = [
@@ -49,17 +49,19 @@ const STUCK_MESSAGES = [
 ];
 
 /**
+ * Status stage labels - changes based on progress
+ */
+const STAGE_LABELS = [
+  { range: [0, 20], label: "Initializing" },
+  { range: [20, 40], label: "Gathering Data" },
+  { range: [40, 60], label: "Analyzing Options" },
+  { range: [60, 80], label: "Evaluating Results" },
+  { range: [80, 100], label: "Finalizing" }
+];
+
+/**
  * StreamingProgress Component
- * Displays real-time search progress with:
- * - Animated gradient progress bar with pulse effect
- * - Pulsing dot loader for active states
- * - Smart message rotation when the backend seems stuck
- * - Smooth transitions between states
- * 
- * @param {Object} props
- * @param {Object} props.progress - Progress data object
- * @param {number} props.progress.progress - Progress percentage (0-100)
- * @param {string} props.progress.message - Current status message
+ * Displays real-time search progress with professional styling
  */
 const StreamingProgress = memo(({ progress }) => {
   // Guard against missing progress data
@@ -69,44 +71,68 @@ const StreamingProgress = memo(({ progress }) => {
   const clampedProgress = Math.min(100, Math.max(0, progress.progress));
   const isComplete = clampedProgress >= 100;
   const isStarting = clampedProgress < 10;
+  
+  // Get current stage label
+  const getCurrentStage = () => {
+    for (const stage of STAGE_LABELS) {
+      if (clampedProgress >= stage.range[0] && clampedProgress < stage.range[1]) {
+        return stage.label;
+      }
+    }
+    return STAGE_LABELS[STAGE_LABELS.length - 1].label;
+  };
+  
+  const currentStage = getCurrentStage();
 
   return (
-    <div className="bg-white/80 backdrop-blur-md rounded-2xl rounded-tl-sm px-5 py-4 shadow-lg border border-gray-200/50 max-w-[85%] transition-all duration-300">
+    <div className="bg-white/80 backdrop-blur-md rounded-2xl rounded-tl-sm px-6 py-5 shadow-lg border border-gray-200/50 max-w-[90%] transition-all duration-300">
       <div className="space-y-4">
-        {/* Header with animated dots */}
+        {/* Header with status indicator */}
         <div className="flex items-center gap-3">
-          {!isComplete ? (
-            <PulsingDots />
-          ) : (
-            <div className="shrink-0 w-5 h-5 bg-emerald-100 rounded-full flex items-center justify-center">
-              <svg className="w-3 h-3 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3">
+              {!isComplete ? (
+                <PulsingDots size="sm" />
+              ) : (
+                <div className="shrink-0 w-4 h-4 bg-emerald-100 rounded-full flex items-center justify-center">
+                  <svg className="w-2.5 h-2.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              )}
+              <span className={`text-xs font-semibold uppercase tracking-wider ${
+                isComplete 
+                  ? 'text-emerald-500' 
+                  : isStarting 
+                    ? 'text-amber-500' 
+                    : 'text-[#009FB8]'
+              }`}>
+                {isComplete ? 'Complete' : currentStage}
+              </span>
             </div>
-          )}
-          <span className={`text-xs font-semibold uppercase tracking-wider ${
-            isComplete 
-              ? 'text-emerald-500' 
-              : isStarting 
-                ? 'text-amber-500' 
-                : 'text-[#009FB8]'
+          </div>
+          <span className={`text-xs font-bold tabular-nums min-w-10 text-right ${
+            isComplete ? 'text-emerald-500' : 'text-[#009FB8]'
           }`}>
-            {isComplete ? 'Complete' : isStarting ? 'Initializing' : 'Processing'}
+            {Math.round(clampedProgress)}%
           </span>
         </div>
 
-        {/* Progress Bar with glow effect */}
+        {/* Progress Bar with enhanced shimmer */}
         <div className="relative">
           <div className="flex items-center gap-3">
-            <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden shadow-inner">
-              {/* Background shimmer */}
+            <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden shadow-inner relative">
+              {/* Enhanced shimmer effect - always visible on the background */}
               <div className="absolute inset-0 rounded-full overflow-hidden">
                 <div 
-                  className="h-full w-full bg-linear-to-r from-transparent via-white/30 to-transparent animate-shimmer"
-                  style={{ animationDuration: '2s' }}
+                  className="h-full w-[200%] bg-linear-to-r from-transparent via-white/60 to-transparent animate-shimmer"
+                  style={{ 
+                    animationDuration: '1.2s',
+                    animationTimingFunction: 'ease-in-out'
+                  }}
                 />
               </div>
-              {/* Actual progress */}
+              {/* Actual progress with gradient */}
               <div 
                 className={`relative h-full rounded-full transition-all duration-700 ease-out ${
                   isComplete
@@ -117,36 +143,44 @@ const StreamingProgress = memo(({ progress }) => {
                 }`}
                 style={{ width: `${clampedProgress}%` }}
               >
-                {/* Moving gradient overlay for active state */}
+                {/* Enhanced shimmer overlay on the progress bar itself */}
                 {!isComplete && (
                   <div 
-                    className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent animate-shimmer"
-                    style={{ animationDuration: '1.5s' }}
+                    className="absolute inset-0 bg-linear-to-r from-transparent via-white/30 to-transparent animate-shimmer"
+                    style={{ 
+                      animationDuration: '0.8s',
+                      animationTimingFunction: 'ease-in-out'
+                    }}
+                  />
+                )}
+                {/* Glow effect on the progress bar edge */}
+                {!isComplete && clampedProgress > 5 && (
+                  <div 
+                    className="absolute right-0 top-0 h-full w-6 bg-linear-to-r from-transparent to-white/20 rounded-r-full"
+                    style={{
+                      boxShadow: '0 0 20px rgba(0, 159, 184, 0.3)'
+                    }}
                   />
                 )}
               </div>
             </div>
-            <span className={`text-xs font-bold tabular-nums min-w-10 text-right ${
-              isComplete ? 'text-emerald-500' : 'text-[#009FB8]'
-            }`}>
-              {Math.round(clampedProgress)}%
-            </span>
           </div>
         </div>
         
-        {/* Status Message with rotation logic */}
+        {/* Status Message with rotation */}
         {progress.message && (
           <StatusMessage 
             actualMessage={progress.message} 
-            isComplete={isComplete} 
+            isComplete={isComplete}
+            progress={clampedProgress}
           />
         )}
 
-        {/* Fun completion message */}
+        {/* Completion message */}
         {isComplete && (
-          <div className="animate-fadeIn">
-            <p className="text-xs text-emerald-600 font-medium flex items-center gap-1.5">
-              <span>Report ready! Displaying results...</span>
+          <div className="animate-fadeIn bg-emerald-50/80 rounded-xl px-4 py-2.5 border border-emerald-200/50">
+            <p className="text-xs text-emerald-700 font-medium">
+              Recommendations ready — displaying your personalized results.
             </p>
           </div>
         )}
@@ -155,16 +189,20 @@ const StreamingProgress = memo(({ progress }) => {
       {/* CSS Animations */}
       <style>{`
         @keyframes shimmer {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
+          0% { transform: translateX(-50%); }
+          100% { transform: translateX(50%); }
         }
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(4px); }
           to { opacity: 1; transform: translateY(0); }
         }
         @keyframes pulse-dot {
-          0%, 100% { transform: scale(1); opacity: 0.5; }
-          50% { transform: scale(1.3); opacity: 1; }
+          0%, 100% { transform: scale(1); opacity: 0.4; }
+          50% { transform: scale(1.4); opacity: 1; }
+        }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
         }
         .animate-shimmer {
           animation: shimmer linear infinite;
@@ -172,38 +210,42 @@ const StreamingProgress = memo(({ progress }) => {
         .animate-fadeIn {
           animation: fadeIn 0.4s ease-out;
         }
+        .animate-slideUp {
+          animation: slideUp 0.5s ease-out;
+        }
       `}</style>
     </div>
   );
 });
 
 /**
- * PulsingDots Component
- * Three animated dots indicating active processing.
+ * PulsingDots Component with size options
  */
-const PulsingDots = memo(() => (
-  <div className="flex items-center gap-1 shrink-0" aria-label="Processing">
-    {[0, 1, 2].map((i) => (
-      <span
-        key={i}
-        className="w-1.5 h-1.5 rounded-full bg-[#009FB8]"
-        style={{
-          animation: `pulse-dot 1.4s ease-in-out ${i * 0.2}s infinite`,
-        }}
-      />
-    ))}
-  </div>
-));
+const PulsingDots = memo(({ size = 'sm' }) => {
+  const dotSize = size === 'sm' ? 'w-1.5 h-1.5' : 'w-2 h-2';
+  
+  return (
+    <div className="flex items-center gap-1 shrink-0" aria-label="Processing">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className={`${dotSize} rounded-full bg-[#009FB8]`}
+          style={{
+            animation: `pulse-dot 1.4s ease-in-out ${i * 0.2}s infinite`,
+          }}
+        />
+      ))}
+    </div>
+  );
+});
 
 PulsingDots.displayName = 'PulsingDots';
 
 /**
  * StatusMessage Component
- * Shows the current status message with smart rotation.
- * If the actual message hasn't changed for 3 seconds, it rotates through
- * fun fallback messages every 3 seconds until the actual message changes.
+ * Shows the current status message with smart rotation
  */
-const StatusMessage = memo(({ actualMessage, isComplete }) => {
+const StatusMessage = memo(({ actualMessage, isComplete, progress }) => {
   const [displayMessage, setDisplayMessage] = useState(actualMessage);
   const [isUsingFallback, setIsUsingFallback] = useState(false);
   const lastActualMessageRef = useRef(actualMessage);
@@ -230,8 +272,8 @@ const StatusMessage = memo(({ actualMessage, isComplete }) => {
     setDisplayMessage(actualMessage);
     setIsUsingFallback(false);
 
-    // If complete, don't start stuck detection
-    if (isComplete) return;
+    // If complete or near complete, don't start stuck detection
+    if (isComplete || progress > 90) return;
 
     // Start the 3-second stuck detection timer
     stuckTimerRef.current = setTimeout(() => {
@@ -247,7 +289,7 @@ const StatusMessage = memo(({ actualMessage, isComplete }) => {
       }
     }, 3000);
 
-  }, [actualMessage, isComplete]);
+  }, [actualMessage, isComplete, progress]);
 
   // Pick a random message different from the current one
   function getRandomStuckMessage() {
@@ -277,7 +319,7 @@ const StatusMessage = memo(({ actualMessage, isComplete }) => {
       {/* Subtle indicator when using fallback messages */}
       {isUsingFallback && (
         <span className="text-[10px] text-gray-400 mt-0.5 block">
-          Still working on it...
+          Processing...
         </span>
       )}
     </div>
