@@ -636,6 +636,39 @@ preferences    -- user settings (userId, currency, prioritizePrice,
 
 ---
 
+## Production Database
+
+The entire DB connection is driven by a single env var: `DATABASE_URL`.
+
+**Supported providers:** Supabase, Neon, Railway, Render Postgres, PlanetScale (via proxy), any standard PostgreSQL.
+
+**Running migrations against production:**
+```bash
+# Option 1 — inline env var (one-off)
+DATABASE_URL=postgresql://user:pass@prod-host:5432/atrixia npx drizzle-kit push
+
+# Option 2 — swap .env then push
+# Edit DATABASE_URL in .env, then:
+npx drizzle-kit push
+```
+
+SSL is automatically enabled when `NODE_ENV=production`. Most cloud providers (Neon, Supabase, Railway) require SSL — it works out of the box.
+
+**Production env vars to set on your host:**
+```
+DATABASE_URL=postgresql://...        # your cloud DB connection string
+NODE_ENV=production
+PORT=5000
+JWT_SECRET=...                       # use a strong random secret
+GEMMA_API_KEY=...
+EBAY_APP_ID=...
+EBAY_CERT_ID=...
+SCRAPER_API_KEY=...
+CORS_ORIGIN=https://your-frontend.com
+```
+
+---
+
 ## Scripts
 
 | Command | Description |
