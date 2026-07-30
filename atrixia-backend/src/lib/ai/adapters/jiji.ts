@@ -45,14 +45,28 @@ export class JijiAdapter implements IMarketplaceAdapter {
       });
 
       if (!res.ok) {
+        if (res.status === 403) {
+          console.warn(`[JijiAdapter] Direct fetch blocked (403) — trying ScraperAPI proxy`);
+          throw new Error('blocked');
+        }
         console.warn(`[JijiAdapter] HTTP ${res.status} for "${clean}"`);
         return [];
       }
 
       html = await res.text();
     } catch (err: any) {
-      console.error('[JijiAdapter] Network error:', err.message);
-      return [];
+      if (err.message === 'blocked' || err.message?.includes('403')) {
+        try {
+          const { scraperFetch } = await import('./scraperFetch');
+          html = await scraperFetch(searchUrl, { render: false, country: 'ng' });
+        } catch (scraperErr: any) {
+          console.error('[JijiAdapter] ScraperAPI fallback failed:', scraperErr.message);
+          return [];
+        }
+      } else {
+        console.error('[JijiAdapter] Network error:', err.message);
+        return [];
+      }
     }
 
     // Strategy 1 — window.__NUXT__ object (Nuxt 2 style)

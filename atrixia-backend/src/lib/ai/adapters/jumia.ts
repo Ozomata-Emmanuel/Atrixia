@@ -43,7 +43,7 @@ export class JumiaAdapter implements IMarketplaceAdapter {
 
     let html: string;
     try {
-      // Jumia works reliably with direct fetch — skip ScraperAPI for speed
+      // Try direct fetch first (works on local/residential IPs)
       const response = await fetch(targetUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -53,18 +53,34 @@ export class JumiaAdapter implements IMarketplaceAdapter {
           'Cache-Control': 'no-cache',
         },
         redirect: 'follow',
-        signal: AbortSignal.timeout(15_000), // parallel calls — effective wait = 15s not 30s
+        signal: AbortSignal.timeout(15_000),
       });
 
       if (!response.ok) {
+        // 403 = datacenter IP blocked — fall through to ScraperAPI
+        if (response.status === 403) {
+          console.warn(`[JumiaAdapter] Direct fetch blocked (403) — trying ScraperAPI proxy`);
+          throw new Error('blocked');
+        }
         console.warn(`[JumiaAdapter] Failed to fetch: ${response.status}`);
         return [];
       }
 
       html = await response.text();
     } catch (err: any) {
-      console.error('[JumiaAdapter] Network error:', err.message);
-      return [];
+      if (err.message === 'blocked' || err.message?.includes('403')) {
+        // Route through ScraperAPI residential proxy
+        try {
+          const { scraperFetch } = await import('./scraperFetch');
+          html = await scraperFetch(targetUrl, { render: false, country: 'ng' });
+        } catch (scraperErr: any) {
+          console.error('[JumiaAdapter] ScraperAPI fallback failed:', scraperErr.message);
+          return [];
+        }
+      } else {
+        console.error('[JumiaAdapter] Network error:', err.message);
+        return [];
+      }
     }
 
     const $ = cheerio.load(html);

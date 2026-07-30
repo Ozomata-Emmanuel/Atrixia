@@ -6,9 +6,9 @@ import { TimeoutError } from './errors';
 import { ShoppingIntent } from '../intent/extractor';
 
 // Product limits
-const DEFAULT_PER_MARKETPLACE = 3;
-const PREFERRED_PER_MARKETPLACE = 6;
-const FILL_PER_MARKETPLACE = 2;
+const DEFAULT_PER_MARKETPLACE = 5;   // raised from 3 — survives outlier filter with room to spare
+const PREFERRED_PER_MARKETPLACE = 8;
+const FILL_PER_MARKETPLACE = 3;
 const TOTAL_PRODUCT_CAP = 15;
 const MIN_PRODUCTS_THRESHOLD = 4;
 
