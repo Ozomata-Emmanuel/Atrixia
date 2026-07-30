@@ -1059,7 +1059,7 @@ Distributed under the **MIT License**. See the `LICENSE` file for more informati
 
 ##  Screenshots & Demo
 
-*Demo video and screenshots coming upon completion of core features.*
+**Demo Video :** https://youtu.be/ejbyHfxVpaM
 
 ---
 
