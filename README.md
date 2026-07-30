@@ -67,7 +67,7 @@ Atrixia returns a single, personalized recommendation with alternatives—elimin
 - **React 18** + **Vite** (rapid dev server, optimized HMR)
 - **TypeScript** (strict type safety)
 - **Tailwind CSS** (utility-first styling with custom color scheme: teal, cyan, lavender, deep blue)
-- **Lucide React** (lightweight SVG icons)
+- **React icons** (lightweight icons)
 - **Socket.io** (real-time search progress updates - optional)
 
 ### Backend
@@ -292,7 +292,7 @@ Ensure you have the following installed:
 ### 2. Clone Repository
 
 ```bash
-git clone https://github.com/raymondstudio/Atrixia.git
+git clone https://github.com/Ozomata-Emmanuel/Atrixia
 cd Atrixia
 ```
 
