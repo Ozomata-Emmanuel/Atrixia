@@ -13,7 +13,7 @@ const Landing = () => {
     {
       icon: <FiBarChart className="text-4xl text-[#009FB8]" />,
       title: "Smart Comparisons",
-      description: "Compare products based on what matters to you with detailed specification breakdowns.",
+      description: "Compare products based on what mAters to you with detailed specification breakdowns.",
     },
     {
       icon: <FiCheckCircle className="text-4xl text-[#009FB8]" />,
@@ -65,7 +65,7 @@ const Landing = () => {
             </h1>
             
             <p className="text-lg md:text-xl text-[#666666] max-w-3xl mx-auto mb-10 leading-relaxed">
-              Let Attrixia analyze thousands of products and give you personalized recommendations with detailed explanations. Make better purchasing decisions in minutes, not hours.
+              Let Atrixia analyze thousands of products and give you personalized recommendations with detailed explanations. Make better purchasing decisions in minutes, not hours.
             </p>
             
             <div className="flex flex-col sm:flex-row justify-center gap-4">
@@ -91,7 +91,7 @@ const Landing = () => {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
               <h2 className="text-3xl md:text-4xl font-serif-brand font-bold text-[#1a1a1a] mb-4">
-                Why Attrixia?
+                Why Atrixia?
               </h2>
               <p className="text-[#666666] text-lg max-w-2xl mx-auto">
                 Discover features designed to simplify your shopping and maximize satisfaction
@@ -126,7 +126,7 @@ const Landing = () => {
               Ready to shop smarter?
             </h2>
             <p className="text-[#666666] text-lg mb-8 max-w-2xl mx-auto">
-              Join thousands of users who are making better purchasing decisions with Attrixia's AI-powered recommendations.
+              Join thousands of users who are making better purchasing decisions with Atrixia's AI-powered recommendations.
             </p>
             <Link
               to="/signup"

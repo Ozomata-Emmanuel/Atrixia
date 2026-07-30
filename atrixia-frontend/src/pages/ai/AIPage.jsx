@@ -1486,7 +1486,7 @@ const AIPage = () => {
                   className={`${customFilters.length > 0 ? "hidden" : "block"}`}
                 >
                   <h2 className="text-2xl font-bold text-[#1a1a1a] mb-2">
-                    Welcome to Attrixia
+                    Welcome to Atrixia
                   </h2>
                   <p className="text-[#666666] max-w-md">
                     Add filters or type your requirements to get personalized
