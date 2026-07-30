@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 const PublicRoute = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth();
 
+  // Only show full-page loader during initial auth check
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f8f8f8]">

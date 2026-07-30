@@ -60,6 +60,7 @@ export const authService = {
   // --- LOGIN ---
   signin: async (credentials) => {
     try {
+      // FIX: Send email and password directly, not nested in credentials object
       const response = await publicApi.post('/auth/login', {
         email: credentials.email,
         password: credentials.password
@@ -78,13 +79,13 @@ export const authService = {
           localStorage.setItem('user', JSON.stringify(user));
         }
         
-        console.log("Full response:",response)
         return response.data;
       }
-      console.log(response)
+      
       return response.data;
 
     } catch (error) {
+      console.error('[authService] Login error:', error.response?.data || error.message);
       return {
         success: false,
         message: error.response?.data?.error || 'Login failed',

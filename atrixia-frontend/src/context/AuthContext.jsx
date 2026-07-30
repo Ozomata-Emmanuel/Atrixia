@@ -15,7 +15,8 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // Only for initial auth check
+  const [isLoginLoading, setIsLoginLoading] = useState(false); // For login/signup operations
 
   // Initialize auth state on mount
   useEffect(() => {
@@ -43,29 +44,42 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = async (email, password) => {
-    setIsLoading(true);
+    setIsLoginLoading(true); // Use separate loading state
     try {
-      const response = await authService.signin(email, password);
-      console.log("Login: ", result)
+      const response = await authService.signin({ email, password });
+      
       if (response.success) {
-        const user = await authService.getCurrentUser();
+        const user = authService.getCurrentUser();
         setUser(user);
         setIsAuthenticated(true);
-        localStorage.setItem('accessToken', response.accessToken);
         return { success: true };
       }
 
-      return { success: false, message: response.message };
+      return { 
+        success: false, 
+        message: response.message || 'Login failed' 
+      };
     } catch (error) {
-      return { success: false, message: error.message };
+      console.error('[AuthContext] Login error:', error);
+      return { 
+        success: false, 
+        message: error.message || 'An unexpected error occurred' 
+      };
     } finally {
-      setIsLoading(false);
+      setIsLoginLoading(false);
     }
   };
 
   const signup = async (userData) => {
-    const result = await authService.signup(userData);
-    return result;
+    setIsLoginLoading(true);
+    try {
+      const result = await authService.signup(userData);
+      return result;
+    } catch (error) {
+      return { success: false, message: error.message };
+    } finally {
+      setIsLoginLoading(false);
+    }
   };
 
   const verifyEmail = async (email, code) => {
@@ -86,7 +100,8 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     isAuthenticated,
-    isLoading,
+    isLoading, // Only for initial auth check
+    isLoginLoading, // For login/signup operations
     login,
     signup,
     verifyEmail,

@@ -2,7 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { FiMail, FiLock, FiEye, FiEyeOff, FiCheckCircle } from 'react-icons/fi';
+import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
+import { toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import AnimatedGridBackground from '../../components/AnimatedGridBackground';
 
 const SignIn = () => {
@@ -10,10 +12,7 @@ const SignIn = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
-  const [isLoading, setIsLoading] = useState(false);
-  const [backendError, setBackendError] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, isLoginLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -29,7 +28,14 @@ const SignIn = () => {
   useEffect(() => {
     const verified = searchParams.get('verified');
     if (verified === 'true') {
-      setSuccessMessage('Email verified successfully! Please sign in.');
+      toast.success('Email verified successfully! Please sign in.', {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
     }
   }, [searchParams]);
 
@@ -45,43 +51,80 @@ const SignIn = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setBackendError('');
-    setSuccessMessage('');
     
     if (!validate()) return;
     
-    setIsLoading(true);
-    
     try {
       const result = await login(email, password);
-
-      console.log(result)
       
       if (result.success) {
+        toast.success('Welcome back! Redirecting...', {
+          position: "top-right",
+          autoClose: 3000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
+        
         // Get the redirect path from location state, default to '/ai'
         const from = location.state?.from?.pathname || '/ai';
-        navigate(from, { replace: true });
-        console.log(result)
+        setTimeout(() => {
+          navigate(from, { replace: true });
+        }, 500);
       } else {
-        // Handle specific backend error messages
+        // Handle specific backend error messages with toast
         if (result.message?.toLowerCase().includes('not verified')) {
-          setBackendError('Please verify your email first. Check your inbox for the verification code.');
+          toast.error('Please verify your email first. Check your inbox for the verification code.', {
+            position: "top-right",
+            autoClose: 5000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
           setTimeout(() => {
             navigate(`/verify-email?email=${encodeURIComponent(email)}`);
           }, 2000);
         } else if (result.message?.toLowerCase().includes('invalid credentials')) {
-          setBackendError('Invalid email or password. Please try again.');
+          toast.error('Invalid email or password. Please try again.', {
+            position: "top-right",
+            autoClose: 4000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
         } else if (result.message?.toLowerCase().includes('not found')) {
-          setBackendError('No account found with this email. Please sign up first.');
+          toast.error('No account found with this email. Please sign up first.', {
+            position: "top-right",
+            autoClose: 4000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
         } else {
-          setBackendError(result.message || 'Login failed. Please try again.');
+          toast.error(result.message || 'Login failed. Please try again.', {
+            position: "top-right",
+            autoClose: 4000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
         }
       }
     } catch (error) {
       console.error('[SignIn] Login error:', error);
-      setBackendError('Unable to connect to server. Please check your internet connection.');
-    } finally {
-      setIsLoading(false);
+      toast.error('Unable to connect to server. Please check your internet connection.', {
+        position: "top-right",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
     }
   };
 
@@ -89,13 +132,11 @@ const SignIn = () => {
   const handleEmailChange = (e) => {
     setEmail(e.target.value);
     if (errors.email) setErrors({ ...errors, email: '' });
-    if (backendError) setBackendError('');
   };
 
   const handlePasswordChange = (e) => {
     setPassword(e.target.value);
     if (errors.password) setErrors({ ...errors, password: '' });
-    if (backendError) setBackendError('');
   };
 
   return (
@@ -116,7 +157,7 @@ const SignIn = () => {
 
       {/* Main content - Full width on mobile, card-like on larger screens */}
       <div className="relative z-10 w-full h-screen md:h-fit max-w-md md:px-4 px-0">
-        <div className="md:bg-white/30 h-full backdrop-blur-xs md:p-6 p-8 md:rounded-2xl shadow-xl border border-gray-100/50 flex items-center">
+        <div className="lg:bg-white/30 h-full lg:backdrop-blur-xs md:p-6 p-8 md:rounded-2xl lg:shadow-xl lg:border lg:border-gray-100/50 flex items-center">
 
           <div className="w-full">
             <div className="text-center mb-8">
@@ -127,21 +168,6 @@ const SignIn = () => {
                 Sign in to continue shopping smarter
               </p>
             </div>
-
-            {/* Success Message (e.g., after email verification) */}
-            {successMessage && (
-              <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-4 rounded-xl mb-4 text-sm flex items-start gap-2">
-                <FiCheckCircle className="text-emerald-500 mt-0.5 shrink-0" />
-                <span>{successMessage}</span>
-              </div>
-            )}
-
-            {/* Backend Error */}
-            {backendError && (
-              <div className="bg-red-50 border border-red-200 text-red-600 p-4 rounded-xl mb-4 text-sm">
-                {backendError}
-              </div>
-            )}
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
@@ -156,7 +182,7 @@ const SignIn = () => {
                       errors.email ? 'border-red-500' : 'border-gray-200'
                     }`}
                     placeholder="you@example.com"
-                    disabled={isLoading}
+                    disabled={isLoginLoading}
                     autoComplete="email"
                   />
                 </div>
@@ -177,7 +203,7 @@ const SignIn = () => {
                       errors.password ? 'border-red-500' : 'border-gray-200'
                     }`}
                     placeholder="Enter your password"
-                    disabled={isLoading}
+                    disabled={isLoginLoading}
                     autoComplete="current-password"
                   />
                   <button
@@ -205,10 +231,10 @@ const SignIn = () => {
 
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoginLoading}
                 className="w-full bg-[#1a1a1a] text-white py-3 rounded-xl font-semibold hover:bg-[#333333] transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {isLoading ? (
+                {isLoginLoading ? (
                   <>
                     <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>

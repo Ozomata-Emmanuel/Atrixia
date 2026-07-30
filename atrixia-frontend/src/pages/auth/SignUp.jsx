@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { FiMail, FiLock, FiEye, FiEyeOff, FiUser } from 'react-icons/fi';
+import { toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import AnimatedGridBackground from '../../components/AnimatedGridBackground';
 
 const SignUp = () => {
@@ -16,7 +18,6 @@ const SignUp = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
-  const [backendError, setBackendError] = useState('');
   const { signup } = useAuth();
   const navigate = useNavigate();
 
@@ -42,7 +43,6 @@ const SignUp = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setBackendError('');
     
     if (!validate()) return;
     
@@ -56,22 +56,81 @@ const SignUp = () => {
       });
       
       if (result.success) {
+        toast.success('Account created successfully! Please verify your email.', {
+          position: "top-right",
+          autoClose: 5000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
+        
+        // Store email for verification
         sessionStorage.setItem('verificationEmail', formData.email.trim());
-        navigate('/verify-email');
+        
+        // Navigate to verification page after a short delay
+        setTimeout(() => {
+          navigate('/verify-email');
+        }, 1000);
       } else {
-        if (result.message?.toLowerCase().includes('already exists')) {
-          setBackendError('An account with this email already exists. Please sign in instead.');
-        } else if (result.message?.toLowerCase().includes('invalid email')) {
+        // Handle specific error messages with toast
+        const errorMessage = result.message || 'Signup failed. Please try again.';
+        
+        if (errorMessage.toLowerCase().includes('already exists') || 
+            errorMessage.toLowerCase().includes('already registered')) {
+          toast.error('An account with this email already exists. Please sign in instead.', {
+            position: "top-right",
+            autoClose: 5000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
+          // Optionally redirect to sign in after a delay
+          setTimeout(() => {
+            navigate('/signin');
+          }, 2000);
+        } else if (errorMessage.toLowerCase().includes('invalid email')) {
+          toast.error('Please enter a valid email address.', {
+            position: "top-right",
+            autoClose: 4000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
           setErrors(prev => ({ ...prev, email: 'Please enter a valid email address' }));
-        } else if (result.message?.toLowerCase().includes('password')) {
-          setErrors(prev => ({ ...prev, password: result.message }));
+        } else if (errorMessage.toLowerCase().includes('password')) {
+          toast.error('Password requirements not met. Please try again.', {
+            position: "top-right",
+            autoClose: 4000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
+          setErrors(prev => ({ ...prev, password: errorMessage }));
         } else {
-          setBackendError(result.message || 'Signup failed. Please try again.');
+          toast.error(errorMessage, {
+            position: "top-right",
+            autoClose: 5000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
         }
       }
     } catch (error) {
       console.error('[SignUp] Signup error:', error);
-      setBackendError('Unable to connect to server. Please check your internet connection.');
+      toast.error('Unable to connect to server. Please check your internet connection.', {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -80,8 +139,10 @@ const SignUp = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    if (errors[name]) setErrors({ ...errors, [name]: '' });
-    if (backendError) setBackendError('');
+    // Clear specific field error when user types
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
   };
 
   return (
@@ -99,7 +160,7 @@ const SignUp = () => {
       </div>
 
       <div className="relative z-10 w-full h-screen md:h-fit max-w-md md:px-4 px-0">
-        <div className="md:bg-white/30 pb-20 md:pb-0 mt-10 md:mt-0 h-full backdrop-blur-xs md:p-6 p-8 md:rounded-2xl shadow-xl border border-gray-100/50 flex items-center">
+        <div className="md:bg-white/30 pb-20 md:pb-0 mt-10 md:mt-0 h-full lg:backdrop-blur-xs md:p-6 p-8 md:rounded-2xl lg:shadow-xl lg:border lg:border-gray-100/50 flex items-center">
           <div className="w-full">
             <div className="text-center mb-8">
               <h2 className="text-3xl font-bold text-[#1a1a1a] font-serif-brand">
@@ -109,12 +170,6 @@ const SignUp = () => {
                 Join Atrixia and start shopping smarter
               </p>
             </div>
-
-            {backendError && (
-              <div className="bg-red-50 border border-red-200 text-red-600 p-4 rounded-xl mb-4 text-sm">
-                {backendError}
-              </div>
-            )}
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>

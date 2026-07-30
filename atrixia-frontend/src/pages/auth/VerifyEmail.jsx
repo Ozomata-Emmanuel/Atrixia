@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { FiMail, FiCheckCircle, FiArrowRight, FiRefreshCw, FiAlertCircle } from 'react-icons/fi';
+import { toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import AnimatedGridBackground from '../../components/AnimatedGridBackground';
 import { authService } from '../../services/authService';
 
@@ -30,8 +32,21 @@ const VerifyEmail = () => {
       if (!emailFromStorage) {
         sessionStorage.setItem('verificationEmail', email);
       }
+    } else {
+      // If no email found, show toast and redirect
+      toast.warning('No email found for verification. Please sign up again.', {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+      setTimeout(() => {
+        navigate('/signup');
+      }, 2000);
     }
-  }, [searchParams]);
+  }, [searchParams, navigate]);
 
   useEffect(() => {
     if (!canResend && timer > 0) {
@@ -63,6 +78,14 @@ const VerifyEmail = () => {
       const result = await authService.resendCode(userEmail);
       
       if (result.success) {
+        toast.success('Verification code resent successfully!', {
+          position: "top-right",
+          autoClose: 3000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
         setResendCount(prev => prev + 1);
         setCanResend(false);
         setTimer(30);
@@ -70,11 +93,29 @@ const VerifyEmail = () => {
         setError('');
         inputRefs.current[0]?.focus();
       } else {
-        setError(result.message || 'Failed to resend code. Please try again.');
+        const errorMsg = result.message || 'Failed to resend code. Please try again.';
+        toast.error(errorMsg, {
+          position: "top-right",
+          autoClose: 4000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
+        setError(errorMsg);
       }
     } catch (err) {
       console.error('[VerifyEmail] Resend error:', err);
-      setError('Unable to resend code. Please check your connection.');
+      const errorMsg = 'Unable to resend code. Please check your connection.';
+      toast.error(errorMsg, {
+        position: "top-right",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+      setError(errorMsg);
     } finally {
       setIsResending(false);
     }
@@ -154,6 +195,14 @@ const VerifyEmail = () => {
     
     if (fullCode.length !== 6) {
       setError('Please enter the complete 6-digit code');
+      toast.warning('Please enter the complete 6-digit code', {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
       return;
     }
 
@@ -169,22 +218,63 @@ const VerifyEmail = () => {
       if (result.success) {
         setIsSuccess(true);
         sessionStorage.removeItem('verificationEmail');
+        toast.success('Email verified successfully!', {
+          position: "top-right",
+          autoClose: 4000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
       } else {
+        let errorMsg = '';
         if (result.message?.toLowerCase().includes('expired')) {
-          setError('Verification code has expired. Please request a new one.');
+          errorMsg = 'Verification code has expired. Please request a new one.';
         } else if (result.message?.toLowerCase().includes('invalid')) {
-          setError('Invalid verification code. Please check and try again.');
+          errorMsg = 'Invalid verification code. Please check and try again.';
         } else if (result.message?.toLowerCase().includes('already verified')) {
           setIsSuccess(true);
+          sessionStorage.removeItem('verificationEmail');
+          toast.success('Email already verified! Redirecting to sign in...', {
+            position: "top-right",
+            autoClose: 3000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
+          setTimeout(() => {
+            navigate('/signin?verified=true');
+          }, 2000);
+          return;
         } else {
-          setError(result.message || 'Verification failed. Please try again.');
+          errorMsg = result.message || 'Verification failed. Please try again.';
         }
+        
+        setError(errorMsg);
+        toast.error(errorMsg, {
+          position: "top-right",
+          autoClose: 4000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
         setCode(['', '', '', '', '', '']);
         inputRefs.current[0]?.focus();
       }
     } catch (err) {
       console.error('[VerifyEmail] Verification error:', err);
-      setError('Unable to verify. Please check your connection and try again.');
+      const errorMsg = 'Unable to verify. Please check your connection and try again.';
+      setError(errorMsg);
+      toast.error(errorMsg, {
+        position: "top-right",
+        autoClose: 4000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
       setCode(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
     } finally {
@@ -213,7 +303,7 @@ const VerifyEmail = () => {
       </div>
 
       <div className="relative z-10 w-full h-screen md:h-fit max-w-md md:px-4 px-0">
-        <div className="md:bg-white/30 h-full backdrop-blur-xs md:p-6 p-8 md:rounded-2xl shadow-xl border border-gray-100/50 flex items-center">
+        <div className="lg:bg-white/30 h-full lg:backdrop-blur-xs md:p-6 p-8 md:rounded-2xl lg:shadow-xl lg:border lg:border-gray-100/50 flex items-center">
           <div className="w-full text-center mb-20 md:mb-0">
             {isSuccess ? (
               <>
@@ -235,7 +325,6 @@ const VerifyEmail = () => {
               </>
             ) : (
               <>
-
                 <h2 className="text-3xl font-bold text-[#1a1a1a] font-serif-brand mb-2">
                   Verify Your Email
                 </h2>
@@ -243,12 +332,12 @@ const VerifyEmail = () => {
                   We've sent a 6-digit verification code to
                 </p>
                 {userEmail && (
-                  <p className="text-[#333333] font-medium mb-6">
+                  <p className="text-[#333333] font-medium mb-6 break-all">
                     {userEmail}
                   </p>
                 )}
 
-                <div className="flex gap-2 justify-center mb-6">
+                <div className="flex gap-2 justify-center mb-6 flex-wrap">
                   {code.map((digit, index) => (
                     <input
                       key={index}
