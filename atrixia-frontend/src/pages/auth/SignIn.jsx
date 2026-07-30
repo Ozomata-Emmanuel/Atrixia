@@ -156,7 +156,7 @@ const SignIn = () => {
       </div>
 
       {/* Main content - Full width on mobile, card-like on larger screens */}
-      <div className="relative z-10 w-full h-screen md:h-fit max-w-md md:px-4 px-0">
+      <div className="relative z-10 w-full h-screen md:h-fit max-w-lg md:px-4 px-0">
         <div className="lg:bg-white/30 h-full lg:backdrop-blur-xs md:p-6 p-8 md:rounded-2xl lg:shadow-xl lg:border lg:border-gray-100/50 flex items-center">
 
           <div className="w-full">

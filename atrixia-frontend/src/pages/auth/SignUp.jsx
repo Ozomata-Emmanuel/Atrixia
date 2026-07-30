@@ -159,8 +159,8 @@ const SignUp = () => {
         trixia
       </div>
 
-      <div className="relative z-10 w-full h-screen md:h-fit max-w-md md:px-4 px-0">
-        <div className="md:bg-white/30 pb-20 md:pb-0 mt-10 md:mt-0 h-full lg:backdrop-blur-xs md:p-6 p-8 md:rounded-2xl lg:shadow-xl lg:border lg:border-gray-100/50 flex items-center">
+      <div className="relative z-10 w-full h-screen md:h-fit max-w-xl md:px-4 px-0">
+        <div className="md:bg-white/30 pb-20 md:pb-5 mt-10 md:mt-0 h-full lg:backdrop-blur-xs md:p-6 p-8 md:rounded-2xl lg:shadow-xl lg:border lg:border-gray-100/50 flex items-center">
           <div className="w-full">
             <div className="text-center mb-8">
               <h2 className="text-3xl font-bold text-[#1a1a1a] font-serif-brand">
