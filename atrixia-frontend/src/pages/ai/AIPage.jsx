@@ -33,7 +33,7 @@ import { FaRegBookmark } from "react-icons/fa6";
 import { IoToggle } from "react-icons/io5";
 import { PiSidebarSimpleLight } from "react-icons/pi";
 import { FiSidebar } from "react-icons/fi";
-import { mockProducts } from "../../data/mockData";
+// import { mockProducts } from "../../data/mockData";
 import { IoArrowUp } from "react-icons/io5";
 import { IoMdStar } from "react-icons/io";
 import AnimatedGridBackground from "../../components/AnimatedGridBackground";
