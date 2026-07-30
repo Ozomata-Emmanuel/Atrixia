@@ -1,0 +1,142 @@
+
+ RUN  v4.1.10 /home/kingjoker/Documents/Atrixia/atrixia-backend
+
+ ❯ src/__tests__/intent.test.ts (8 tests | 8 failed) 145ms
+     × extracts budget from "under $300" 59ms
+     × sets price floor for laptops 6ms
+     × extracts brand 9ms
+     × includes exclusion terms for laptops 4ms
+     × handles descriptive queries via NLP 6ms
+     × returns no warning for valid queries 24ms
+     × always returns searchTerms array 13ms
+     × extracts NGN budget 8ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 8 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/intent.test.ts > extractIntent > extracts budget from "under $300"
+Error: Cannot find module '../adapters/querySanitizer'
+Require stack:
+- /home/kingjoker/Documents/Atrixia/atrixia-backend/src/lib/ai/intent/extractor.ts
+ ❯ extractIntent src/lib/ai/intent/extractor.ts:198:29
+    196|   // Sanitize first to strip conversational noise and typos
+    197|   // eslint-disable-next-line @typescript-eslint/no-var-requires
+    198|   const { sanitizeQuery } = require('../adapters/querySanitizer');
+       |                             ^
+    199|   let q = (sanitizeQuery(query) as string).trim();
+    200|   let queryWarning: string | null = null;
+ ❯ src/__tests__/intent.test.ts:6:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯
+
+ FAIL  src/__tests__/intent.test.ts > extractIntent > sets price floor for laptops
+Error: Cannot find module '../adapters/querySanitizer'
+Require stack:
+- /home/kingjoker/Documents/Atrixia/atrixia-backend/src/lib/ai/intent/extractor.ts
+ ❯ extractIntent src/lib/ai/intent/extractor.ts:198:29
+    196|   // Sanitize first to strip conversational noise and typos
+    197|   // eslint-disable-next-line @typescript-eslint/no-var-requires
+    198|   const { sanitizeQuery } = require('../adapters/querySanitizer');
+       |                             ^
+    199|   let q = (sanitizeQuery(query) as string).trim();
+    200|   let queryWarning: string | null = null;
+ ❯ src/__tests__/intent.test.ts:12:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯
+
+ FAIL  src/__tests__/intent.test.ts > extractIntent > extracts brand
+Error: Cannot find module '../adapters/querySanitizer'
+Require stack:
+- /home/kingjoker/Documents/Atrixia/atrixia-backend/src/lib/ai/intent/extractor.ts
+ ❯ extractIntent src/lib/ai/intent/extractor.ts:198:29
+    196|   // Sanitize first to strip conversational noise and typos
+    197|   // eslint-disable-next-line @typescript-eslint/no-var-requires
+    198|   const { sanitizeQuery } = require('../adapters/querySanitizer');
+       |                             ^
+    199|   let q = (sanitizeQuery(query) as string).trim();
+    200|   let queryWarning: string | null = null;
+ ❯ src/__tests__/intent.test.ts:17:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯
+
+ FAIL  src/__tests__/intent.test.ts > extractIntent > includes exclusion terms for laptops
+Error: Cannot find module '../adapters/querySanitizer'
+Require stack:
+- /home/kingjoker/Documents/Atrixia/atrixia-backend/src/lib/ai/intent/extractor.ts
+ ❯ extractIntent src/lib/ai/intent/extractor.ts:198:29
+    196|   // Sanitize first to strip conversational noise and typos
+    197|   // eslint-disable-next-line @typescript-eslint/no-var-requires
+    198|   const { sanitizeQuery } = require('../adapters/querySanitizer');
+       |                             ^
+    199|   let q = (sanitizeQuery(query) as string).trim();
+    200|   let queryWarning: string | null = null;
+ ❯ src/__tests__/intent.test.ts:22:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/8]⎯
+
+ FAIL  src/__tests__/intent.test.ts > extractIntent > handles descriptive queries via NLP
+Error: Cannot find module '../adapters/querySanitizer'
+Require stack:
+- /home/kingjoker/Documents/Atrixia/atrixia-backend/src/lib/ai/intent/extractor.ts
+ ❯ extractIntent src/lib/ai/intent/extractor.ts:198:29
+    196|   // Sanitize first to strip conversational noise and typos
+    197|   // eslint-disable-next-line @typescript-eslint/no-var-requires
+    198|   const { sanitizeQuery } = require('../adapters/querySanitizer');
+       |                             ^
+    199|   let q = (sanitizeQuery(query) as string).trim();
+    200|   let queryWarning: string | null = null;
+ ❯ src/__tests__/intent.test.ts:29:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/8]⎯
+
+ FAIL  src/__tests__/intent.test.ts > extractIntent > returns no warning for valid queries
+Error: Cannot find module '../adapters/querySanitizer'
+Require stack:
+- /home/kingjoker/Documents/Atrixia/atrixia-backend/src/lib/ai/intent/extractor.ts
+ ❯ extractIntent src/lib/ai/intent/extractor.ts:198:29
+    196|   // Sanitize first to strip conversational noise and typos
+    197|   // eslint-disable-next-line @typescript-eslint/no-var-requires
+    198|   const { sanitizeQuery } = require('../adapters/querySanitizer');
+       |                             ^
+    199|   let q = (sanitizeQuery(query) as string).trim();
+    200|   let queryWarning: string | null = null;
+ ❯ src/__tests__/intent.test.ts:36:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/8]⎯
+
+ FAIL  src/__tests__/intent.test.ts > extractIntent > always returns searchTerms array
+Error: Cannot find module '../adapters/querySanitizer'
+Require stack:
+- /home/kingjoker/Documents/Atrixia/atrixia-backend/src/lib/ai/intent/extractor.ts
+ ❯ extractIntent src/lib/ai/intent/extractor.ts:198:29
+    196|   // Sanitize first to strip conversational noise and typos
+    197|   // eslint-disable-next-line @typescript-eslint/no-var-requires
+    198|   const { sanitizeQuery } = require('../adapters/querySanitizer');
+       |                             ^
+    199|   let q = (sanitizeQuery(query) as string).trim();
+    200|   let queryWarning: string | null = null;
+ ❯ src/__tests__/intent.test.ts:41:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/8]⎯
+
+ FAIL  src/__tests__/intent.test.ts > extractIntent > extracts NGN budget
+Error: Cannot find module '../adapters/querySanitizer'
+Require stack:
+- /home/kingjoker/Documents/Atrixia/atrixia-backend/src/lib/ai/intent/extractor.ts
+ ❯ extractIntent src/lib/ai/intent/extractor.ts:198:29
+    196|   // Sanitize first to strip conversational noise and typos
+    197|   // eslint-disable-next-line @typescript-eslint/no-var-requires
+    198|   const { sanitizeQuery } = require('../adapters/querySanitizer');
+       |                             ^
+    199|   let q = (sanitizeQuery(query) as string).trim();
+    200|   let queryWarning: string | null = null;
+ ❯ src/__tests__/intent.test.ts:47:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/8]⎯
+
+
+ Test Files  1 failed | 4 passed (5)
+      Tests  8 failed | 37 passed (45)
+   Start at  14:54:35
+   Duration  4.34s (transform 962ms, setup 0ms, import 5.44s, tests 516ms, environment 3ms)
+
+EXIT:0

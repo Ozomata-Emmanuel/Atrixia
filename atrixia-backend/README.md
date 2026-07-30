@@ -341,6 +341,26 @@ Returns the user's last 20 searches — formatted for a ChatGPT-style sidebar.
 
 ---
 
+#### `DELETE /search/history/:searchId`
+Deletes a single search from the user's history (like ChatGPT's per-chat delete button).
+
+```
+DELETE /api/search/history/uuid
+Response: { "success": true, "message": "Search deleted." }
+```
+
+---
+
+#### `DELETE /search/history`
+Clears the user's entire search history.
+
+```
+DELETE /api/search/history
+Response: { "success": true, "message": "Search history cleared." }
+```
+
+---
+
 #### `GET /search/:searchId`
 Returns the full saved report for a specific search. Use the `searchId` from the `complete` SSE event or history list.
 
@@ -428,9 +448,15 @@ Returns the full message thread for a conversation.
 }
 ```
 
----
+#### `DELETE /search/conversations/:conversationId`
+Deletes a specific conversation thread (same pattern as ChatGPT's per-chat delete).
 
-### User
+```
+DELETE /api/search/conversations/conv_abc123
+Response: { "success": true, "message": "Conversation deleted." }
+```
+
+---
 
 #### `GET /user/profile`
 ```json

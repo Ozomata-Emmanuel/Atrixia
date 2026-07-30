@@ -13,10 +13,10 @@ const TOTAL_PRODUCT_CAP = 15;
 const MIN_PRODUCTS_THRESHOLD = 4;
 
 // Per-adapter timeouts (ms)
-// Direct-fetch adapters (Jumia, Konga, Jiji) — single HTTP call, fast
-const DIRECT_FETCH_TIMEOUT = 10_000;
-// API adapters (eBay) — token is cached after first call, so also fast
-const API_ADAPTER_TIMEOUT = 12_000;
+// Generous timeouts — real results matter more than speed.
+// The SSE stream keeps users informed with live progress events.
+const DIRECT_FETCH_TIMEOUT = 18_000;  // Jumia, Konga, Jiji
+const API_ADAPTER_TIMEOUT  = 22_000;  // eBay (token cached + Browse API)
 
 // Adapters that go through an external API (not a plain scrape)
 const API_ADAPTERS = new Set(['ebay']);
@@ -113,21 +113,23 @@ export class MarketplaceManager {
       const t0 = Date.now();
       try {
         const results = await this.searchWithTimeout(adapter.marketplaceName, query, options);
-        const normalised = results
-          .map((p) => MarketplaceNormalizer.normalizeProduct(p, targetCurrency))
-          .slice(0, limit);
-        console.log(`[MarketplaceManager] ${adapter.marketplaceName}: ${normalised.length} products (${Date.now() - t0}ms)`);
-        return normalised;
+        // Normalise prices first, then slice — do NOT slice before normalisation
+        const normalised = results.map((p) =>
+          MarketplaceNormalizer.normalizeProduct(p, targetCurrency)
+        );
+        console.log(`[MarketplaceManager] ${adapter.marketplaceName}: ${normalised.length} raw products (${Date.now() - t0}ms)`);
+        // Return all normalised — slicing to limit happens after filtering in searchAll
+        return { name: adapter.marketplaceName, products: normalised, limit };
       } catch (err: any) {
         console.warn(`[MarketplaceManager] ${adapter.marketplaceName} failed (${Date.now() - t0}ms): ${err.message}`);
-        return [] as NormalizedProduct[];
+        return { name: adapter.marketplaceName, products: [] as NormalizedProduct[], limit };
       }
     });
 
     const outcomes = await Promise.allSettled(tasks);
     const aggregated: NormalizedProduct[] = [];
     for (const o of outcomes) {
-      if (o.status === 'fulfilled') aggregated.push(...o.value);
+      if (o.status === 'fulfilled') aggregated.push(...o.value.products);
     }
     return aggregated;
   }
@@ -168,8 +170,22 @@ export class MarketplaceManager {
     // Primary parallel search across all active adapters
     let aggregated = await this.runSearch(searchQuery, opts, getLimit);
 
-    // Post-processing filters
+    // Filter accessories BEFORE capping per-marketplace
     aggregated = this.filterAccessories(aggregated, excludeKeywords);
+
+    // Now cap per marketplace — take the best N after accessory filtering
+    const byMarketplace = new Map<string, NormalizedProduct[]>();
+    for (const p of aggregated) {
+      const key = p.marketplace;
+      if (!byMarketplace.has(key)) byMarketplace.set(key, []);
+      byMarketplace.get(key)!.push(p);
+    }
+    aggregated = [];
+    for (const [name, products] of byMarketplace) {
+      const limit = getLimit(name);
+      aggregated.push(...products.slice(0, limit));
+      console.log(`[MarketplaceManager] ${name}: ${Math.min(products.length, limit)}/${products.length} products after filter`);
+    }
     if (aggregated.length >= 3) {
       aggregated = this.filterPriceOutliers(aggregated);
     }
@@ -182,8 +198,9 @@ export class MarketplaceManager {
     }
 
     // Fallback: only if we got almost nothing — use just the product type keyword,
-    // single retry, no timeout extension
-    if (aggregated.length < MIN_PRODUCTS_THRESHOLD && intent?.productType) {
+    // single retry, no timeout extension.
+    // NEVER fall back with "general" — it returns completely unrelated results.
+    if (aggregated.length < MIN_PRODUCTS_THRESHOLD && intent?.productType && intent.productType !== 'general') {
       const fallbackQuery = intent.productType;
       console.log(`[MarketplaceManager] Only ${aggregated.length} results — one-shot fallback: "${fallbackQuery}"`);
       const fallbackRaw = await this.runSearch(fallbackQuery, opts, getLimit);

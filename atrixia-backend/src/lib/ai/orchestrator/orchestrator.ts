@@ -82,7 +82,12 @@ export class AIOrchestrator {
         intent,
       });
 
-      const rankingResult = RankingEngine.rank(rawProducts, preferences, intent?.budgetMax);
+      const rankingResult = RankingEngine.rank(
+        rawProducts,
+        preferences,
+        intent?.budgetMax,
+        intent?.searchTerms   // pass query terms for relevance scoring
+      );
       const systemInstruction = PromptBuilder.buildSystemPrompt(
         { ...memoryContext, preferences },
         rawProducts,
@@ -222,13 +227,39 @@ export class AIOrchestrator {
       });
 
       // ── Step 4: rank + prompt ─────────────────────────────────────────────
-      const rankingResult = RankingEngine.rank(rawProducts, preferences, intent?.budgetMax);
+      const rankingResult = RankingEngine.rank(
+        rawProducts,
+        preferences,
+        intent?.budgetMax,
+        intent?.searchTerms   // pass query terms for relevance scoring
+      );
+
+      // Drop products that scored ≤ 15 — they are irrelevant to the query.
+      // If everything gets dropped, surface "no relevant products" error.
+      const relevantProducts = rankingResult.products.filter(p => (p.confidence ?? 0) > 15);
+      if (relevantProducts.length === 0) {
+        stream.error(
+          `No relevant products found for "${request.query}". The marketplaces returned results that don't match your search. Try a more specific product name.`,
+          'NO_RELEVANT_PRODUCTS'
+        );
+        return;
+      }
+
+      // Rebuild ranking result with only relevant products
+      const filteredRankingResult = {
+        ...rankingResult,
+        products: relevantProducts,
+        topPick: rankingResult.topPick && (rankingResult.topPick.confidence ?? 0) > 15 ? rankingResult.topPick : relevantProducts[0] ?? null,
+        budgetPick: rankingResult.budgetPick && (rankingResult.budgetPick.confidence ?? 0) > 15 ? rankingResult.budgetPick : null,
+        performancePick: rankingResult.performancePick && (rankingResult.performancePick.confidence ?? 0) > 15 ? rankingResult.performancePick : null,
+        valuePick: rankingResult.valuePick && (rankingResult.valuePick.confidence ?? 0) > 15 ? rankingResult.valuePick : null,
+      };
       stream.step('analyzing_tradeoffs', 70, { message: 'Formulating trade-off analysis...' });
 
       const systemInstruction = PromptBuilder.buildSystemPrompt(
         { ...memoryContext, preferences },
-        rawProducts,
-        rankingResult
+        relevantProducts,
+        filteredRankingResult
       );
       const messages = PromptBuilder.buildMessages(request.query, memoryContext);
 
@@ -249,19 +280,18 @@ export class AIOrchestrator {
         stream.step('validating_response', 92, { message: 'Finalising report...' });
 
         const rawJson = JSON.parse(aiResult.text);
-        const report = ReportGenerator.generate(rankingResult, rawJson.summary || rawJson.recommendation);
+        const report = ReportGenerator.generate(filteredRankingResult, rawJson.summary || rawJson.recommendation);
         const aiProducts: AIProductAnalysis[] = Array.isArray(rawJson.products) ? rawJson.products : [];
         enrichedReport = ReportGenerator.mergeAIProductAnalysis(report, aiProducts);
       } catch (aiErr: any) {
-        // AI failed — still return a useful report using deterministic data only
         StructuredLogger.warn('[AIOrchestrator] AI inference failed, using deterministic fallback', {
           conversationId, error: aiErr.message,
         });
         stream.step('validating_response', 92, { message: 'Using deterministic analysis...' });
         enrichedReport = ReportGenerator.generate(
-          rankingResult,
-          `Found ${rawProducts.length} products across ${[...new Set(rawProducts.map(p => p.marketplace))].join(', ')}. ` +
-          `Best match: ${rankingResult.topPick?.title ?? 'N/A'} at ${rankingResult.topPick?.price?.toFixed(2) ?? 'N/A'}.`
+          filteredRankingResult,
+          `Found ${relevantProducts.length} products across ${[...new Set(relevantProducts.map(p => p.marketplace))].join(', ')}. ` +
+          `Best match: ${filteredRankingResult.topPick?.title ?? 'N/A'} at ${filteredRankingResult.topPick?.price?.toFixed(2) ?? 'N/A'}.`
         );
       }
 

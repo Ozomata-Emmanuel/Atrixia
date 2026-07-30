@@ -35,7 +35,16 @@ export class EbayAdapter implements IMarketplaceAdapter {
   async search(query: string, options?: { category?: string; region?: string }): Promise<NormalizedProduct[]> {
     const clean = sanitizeQuery(query);
     if (getEbayAppId()) {
-      return this._searchViaApi(clean, options);
+      const results = await this._searchViaApi(clean, options);
+      // If API returned nothing and query has multiple words, retry with first word
+      if (results.length === 0) {
+        const firstWord = clean.split(' ')[0];
+        if (firstWord && firstWord !== clean && firstWord.length >= 3) {
+          console.log(`[EbayAdapter] Retrying with simpler query: "${firstWord}"`);
+          return this._searchViaApi(firstWord, options);
+        }
+      }
+      return results;
     }
     return this._searchViaHtml(clean, options);
   }
@@ -65,7 +74,7 @@ export class EbayAdapter implements IMarketplaceAdapter {
           Authorization: `Basic ${credentials}`,
         },
         body: 'grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope',
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(15_000),
       });
 
       if (!res.ok) {
@@ -111,7 +120,7 @@ export class EbayAdapter implements IMarketplaceAdapter {
           'Content-Type': 'application/json',
           'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
         },
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(18_000),
       });
 
       if (!res.ok) {

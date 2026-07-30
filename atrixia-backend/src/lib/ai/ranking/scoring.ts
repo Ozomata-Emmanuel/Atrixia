@@ -1,6 +1,38 @@
 import { NormalizedProduct } from '../models/product';
 
 /**
+ * Relevance Score — how well the product title matches the search query.
+ * This acts as a gating score: products that don't match get hard-demoted.
+ *
+ * Score:
+ *  100 = all query keywords found in title
+ *   75 = most keywords found (≥ 60%)
+ *   50 = some keywords found (≥ 30%)
+ *   10 = very few keywords — likely an irrelevant product
+ *
+ * Words shorter than 3 chars and stop words are ignored.
+ */
+export function relevanceScore(product: NormalizedProduct, queryTerms: string[]): number {
+  if (!queryTerms.length) return 75; // no terms to match against, don't penalise
+
+  const stopWords = new Set(['a','an','the','for','and','or','of','to','in','on','at','by','with','from','buy','get','find','me','i','want','need','looking','where','can','best','cheap','good']);
+  const meaningfulTerms = queryTerms
+    .map(t => t.toLowerCase().trim())
+    .filter(t => t.length >= 3 && !stopWords.has(t));
+
+  if (!meaningfulTerms.length) return 75;
+
+  const title = (product.title || '').toLowerCase();
+  const matched = meaningfulTerms.filter(term => title.includes(term));
+  const ratio = matched.length / meaningfulTerms.length;
+
+  if (ratio >= 1.0) return 100;
+  if (ratio >= 0.6) return 75;
+  if (ratio >= 0.3) return 50;
+  return 10; // hard demote — likely irrelevant
+}
+
+/**
  * Price Score (25% weight)
  * 100 = Lowest price, well under budget
  *  75 = Fair price, within budget

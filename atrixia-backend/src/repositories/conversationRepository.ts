@@ -1,6 +1,6 @@
 import { db } from '../db';
 import { conversations } from '../db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, sql } from 'drizzle-orm';
 import { ConversationThread } from '../lib/ai/memory/history';
 import { Message } from '../lib/ai/types/ai';
 
@@ -25,31 +25,28 @@ export class ConversationRepository {
   }
 
   async save(thread: ConversationThread): Promise<void> {
-    const existing = await db
-      .select({ id: conversations.id })
-      .from(conversations)
-      .where(eq(conversations.id, thread.conversationId))
-      .limit(1);
+    const messagesJson = JSON.stringify(thread.messages);
+    const now = new Date();
+    const createdAt = thread.createdAt instanceof Date
+      ? thread.createdAt.toISOString()
+      : new Date(thread.createdAt).toISOString();
+    const nowIso = now.toISOString();
 
-    if (existing.length > 0) {
-      await db
-        .update(conversations)
-        .set({
-          messages: thread.messages as any,
-          summary: thread.summary || null,
-          updatedAt: new Date(),
-        })
-        .where(eq(conversations.id, thread.conversationId));
-    } else {
-      await db.insert(conversations).values({
-        id: thread.conversationId,
-        userId: thread.userId || '00000000-0000-0000-0000-000000000000',
-        messages: thread.messages as any,
-        summary: thread.summary || null,
-        createdAt: thread.createdAt,
-        updatedAt: thread.updatedAt,
-      });
-    }
+    await db.execute(sql`
+      INSERT INTO conversations (id, user_id, messages, summary, created_at, updated_at)
+      VALUES (
+        ${thread.conversationId},
+        ${thread.userId || '00000000-0000-0000-0000-000000000000'},
+        ${messagesJson}::jsonb,
+        ${thread.summary ?? null},
+        ${createdAt}::timestamptz,
+        ${nowIso}::timestamptz
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        messages   = EXCLUDED.messages,
+        summary    = EXCLUDED.summary,
+        updated_at = EXCLUDED.updated_at
+    `);
   }
 
   async delete(conversationId: string): Promise<void> {

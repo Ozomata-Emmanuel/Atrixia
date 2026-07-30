@@ -22,6 +22,7 @@ export class KongaAdapter implements IMarketplaceAdapter {
           'Cache-Control': 'no-cache',
         },
         redirect: 'follow',
+        signal: AbortSignal.timeout(9_000),
       });
 
       if (!res.ok) {
@@ -37,12 +38,13 @@ export class KongaAdapter implements IMarketplaceAdapter {
     // Strategy 1: Konga embeds product JSON in a script tag as window.__STORE__ or similar
     const fromScript = this._extractFromScript(html, options);
     if (fromScript && fromScript.length > 0) {
-      return fromScript.slice(0, 3);
+      // Return up to 10 — let the marketplace manager's accessory filter pick the best 3
+      return fromScript.slice(0, 10);
     }
 
     // Strategy 2: HTML parsing
     const fromHtml = this._extractFromHtml(html, clean, options);
-    return fromHtml.slice(0, 3);
+    return fromHtml.slice(0, 10);
   }
 
   private _extractFromScript(
