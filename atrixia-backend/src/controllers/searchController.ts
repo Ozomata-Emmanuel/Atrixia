@@ -50,11 +50,14 @@ export const createSearch = async (req: AuthRequest, res: Response, next: NextFu
     } else {
       const result = await orchestrator.processQuery(userId, { query, context: queryContext });
 
+      if (result.rejection) {
+        throw new AppError(result.rejection, 400);
+      }
       if (!result.success) {
         throw new AppError(result.error || 'AI Search processing failed', 500);
       }
 
-      // processQuery already persists to history internally — no double-save needed
+      // processQuery persists to history internally
       res.status(200).json({
         success: true,
         data: {

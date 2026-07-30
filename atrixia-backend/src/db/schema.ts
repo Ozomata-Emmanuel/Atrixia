@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, varchar, timestamp, jsonb, numeric, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, varchar, timestamp, jsonb, boolean } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -24,11 +24,13 @@ export const searches = pgTable('searches', {
 export const preferences = pgTable('preferences', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull().unique(),
-  budgetMin: numeric('budget_min').default('0'),
-  budgetMax: numeric('budget_max').default('10000'),
+  // Scoring priority — only one should be true; defaults to quality
+  prioritizePrice:       boolean('prioritize_price').default(false),
+  prioritizeQuality:     boolean('prioritize_quality').default(true),
+  // Preferred currency for price display
   preferredCurrency: varchar('preferred_currency', { length: 3 }).default('USD'),
-  prioritizePrice: boolean('prioritize_price').default(true),
-  prioritizeQuality: boolean('prioritize_quality').default(false),
+  // Which marketplaces to include — null/empty means all active ones
+  preferredMarketplaces: jsonb('preferred_marketplaces').default([]),  // string[]
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

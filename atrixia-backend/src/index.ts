@@ -1,10 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import swaggerUi from 'swagger-ui-express';
 import authRoutes from './routes/authRoutes';
 import searchRoutes from './routes/searchRoutes';
 import userRoutes from './routes/userRoutes';
 import { errorHandler } from './middleware/errorHandler';
+import { swaggerDocument } from './swagger';
 import { db } from './db';
 
 dotenv.config();
@@ -18,6 +20,11 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+
+// Swagger UI — available at /api/docs
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
+  customSiteTitle: 'Atrixia API Docs',
+}));
 
 // Routes
 app.use('/api/auth', authRoutes);

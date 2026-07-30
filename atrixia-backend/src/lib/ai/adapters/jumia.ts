@@ -23,6 +23,7 @@ export class JumiaAdapter implements IMarketplaceAdapter {
           'Cache-Control': 'no-cache',
         },
         redirect: 'follow',
+        signal: AbortSignal.timeout(9_000), // slightly under the 10s manager timeout
       });
 
       if (!response.ok) {

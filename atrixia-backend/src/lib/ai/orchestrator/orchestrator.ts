@@ -19,6 +19,7 @@ import {
 import { Response } from 'express';
 import { SearchHistoryRepository } from '../../../repositories/searchHistoryRepository';
 import { extractIntent, ShoppingIntent } from '../intent/extractor';
+import { validateQuery } from '../adapters/querySanitizer';
 
 // Shared repo — lightweight, no connection per instance
 const searchHistoryRepo = new SearchHistoryRepository();
@@ -47,35 +48,40 @@ export class AIOrchestrator {
   async processQuery(
     userId: string,
     request: AIRequest
-  ): Promise<{ success: boolean; report?: RecommendationReport; error?: string }> {
+  ): Promise<{ success: boolean; report?: RecommendationReport; error?: string; rejection?: string }> {
     const t0 = Date.now();
     const conversationId =
       request.context?.conversationId || `conv_${crypto.randomUUID().slice(0, 8)}`;
 
+    // ── Pre-flight: validate query before spending any resources ─────────────
+    const validation = validateQuery(request.query);
+    if (!validation.valid) {
+      StructuredLogger.warn('[AIOrchestrator] Query rejected', {
+        conversationId, userId, metadata: { reason: validation.reason, query: request.query },
+      });
+      return { success: false, rejection: validation.message, error: validation.message };
+    }
+
     try {
-      // ── Step 1+2: load memory + extract intent in parallel ────────────────
       const [memoryContext, intent] = await Promise.all([
         this.memory.loadContext(userId, conversationId),
         Promise.resolve(this._extractIntent(request.query)),
       ]);
 
-      if (intent?.queryWarning) {
-        StructuredLogger.warn('[AIOrchestrator] Query correction applied', {
-          conversationId,
-          warning: intent.queryWarning,
-        });
-      }
-
       const preferences = request.context?.preferences ?? memoryContext.preferences;
 
-      // ── Step 3: parallel marketplace search ───────────────────────────────
+      // Use preferredMarketplaces from saved prefs if request doesn't specify any
+      const resolvedMarketplaces =
+        request.context?.marketplaces ??
+        (preferences as any)?.preferredMarketplaces ??
+        [];
+
       const rawProducts = await this.manager.searchAll(request.query, {
         currency: preferences?.currency || 'USD',
-        marketplaces: request.context?.marketplaces,
+        marketplaces: resolvedMarketplaces.length > 0 ? resolvedMarketplaces : undefined,
         intent,
       });
 
-      // ── Step 4: rank + build prompt (CPU-only, instant) ───────────────────
       const rankingResult = RankingEngine.rank(rawProducts, preferences, intent?.budgetMax);
       const systemInstruction = PromptBuilder.buildSystemPrompt(
         { ...memoryContext, preferences },
@@ -84,7 +90,6 @@ export class AIOrchestrator {
       );
       const messages = PromptBuilder.buildMessages(request.query, memoryContext);
 
-      // ── Step 5: AI inference ──────────────────────────────────────────────
       let aiResult;
       let retryCount = 0;
       while (true) {
@@ -94,73 +99,52 @@ export class AIOrchestrator {
             systemInstruction,
             responseMimeType: 'application/json',
           });
-          JSON.parse(aiResult.text); // validate
+          JSON.parse(aiResult.text);
           break;
         } catch (jsonErr: any) {
           retryCount++;
-          if (retryCount > 1) {
-            throw new Error(`AI returned malformed JSON after retry: ${jsonErr.message}`);
-          }
-          StructuredLogger.warn('[AIOrchestrator] JSON parse failed, retrying once', {
-            conversationId,
-            error: jsonErr.message,
-          });
+          if (retryCount > 1) throw new Error(`AI malformed JSON after retry: ${jsonErr.message}`);
         }
       }
 
-      // ── Step 6: build report ──────────────────────────────────────────────
       const rawJson = JSON.parse(aiResult.text);
-      const report = ReportGenerator.generate(
-        rankingResult,
-        rawJson.summary || rawJson.recommendation
-      );
-      const aiProducts: AIProductAnalysis[] = Array.isArray(rawJson.products)
-        ? rawJson.products
-        : [];
+      const report = ReportGenerator.generate(rankingResult, rawJson.summary || rawJson.recommendation);
+      const aiProducts: AIProductAnalysis[] = Array.isArray(rawJson.products) ? rawJson.products : [];
       const enrichedReport = ReportGenerator.mergeAIProductAnalysis(report, aiProducts);
 
-      // ── Step 7: persist memory + search history in parallel ───────────────
-      await Promise.all([
-        this.memory.appendMessages(
-          conversationId,
-          [
-            { role: 'user', content: request.query },
-            { role: 'assistant', content: enrichedReport.executiveSummary },
-          ],
-          userId
-        ),
-        searchHistoryRepo
-          .save({
+      // Persist — awaited so failures are visible in logs
+      try {
+        await Promise.all([
+          this.memory.appendMessages(conversationId,
+            [{ role: 'user', content: request.query },
+             { role: 'assistant', content: enrichedReport.executiveSummary }],
+            userId
+          ),
+          searchHistoryRepo.save({
             id: enrichedReport.id,
             query: request.query,
             timestamp: new Date(),
             resultsCount: rawProducts.length,
             userId,
             results: enrichedReport,
-          })
-          .catch((err: any) =>
-            StructuredLogger.warn('[AIOrchestrator] Search history save failed', {
-              conversationId,
-              error: err.message,
-            })
-          ),
-      ]);
+          }),
+        ]);
+      } catch (saveErr: any) {
+        // Log but don't fail the response — user still gets their results
+        StructuredLogger.warn('[AIOrchestrator] Persist failed (non-fatal)', {
+          conversationId, error: saveErr.message,
+        });
+      }
 
       StructuredLogger.info('[AIOrchestrator] processQuery complete', {
-        userId,
-        conversationId,
-        latencyMs: Date.now() - t0,
-        products: rawProducts.length,
-        retryCount,
+        userId, conversationId, latencyMs: Date.now() - t0,
+        metadata: { products: rawProducts.length },
       });
 
       return { success: true, report: enrichedReport };
     } catch (err: any) {
       StructuredLogger.error('[AIOrchestrator] processQuery failed', {
-        conversationId,
-        userId,
-        error: err.message,
-        stack: err.stack,
+        conversationId, userId, error: err.message,
       });
       return { success: false, error: err.message || String(err) };
     }
@@ -178,12 +162,21 @@ export class AIOrchestrator {
     const conversationId =
       request.context?.conversationId || `conv_${crypto.randomUUID().slice(0, 8)}`;
 
-    // Open SSE connection immediately — client sees activity right away
+    // Open SSE connection immediately
     stream.start();
 
+    // ── Pre-flight: validate query ───────────────────────────────────────────
+    const validation = validateQuery(request.query);
+    if (!validation.valid) {
+      StructuredLogger.warn('[AIOrchestrator] Query rejected (stream)', {
+        conversationId, userId, metadata: { reason: validation.reason },
+      });
+      stream.error(validation.message || 'Invalid query', 'QUERY_REJECTED');
+      return;
+    }
+
     try {
-      // ── Steps 1+2: memory + intent extraction in parallel ─────────────────
-      // These two have zero dependency on each other — run together
+      // ── Steps 1+2: memory + intent in parallel ────────────────────────────
       stream.step('retrieving_memory', 15, { message: 'Restoring conversation context...' });
 
       const [memoryContext, intent] = await Promise.all([
@@ -196,27 +189,40 @@ export class AIOrchestrator {
       }
 
       const preferences = request.context?.preferences ?? memoryContext.preferences;
-
       stream.step('loading_preferences', 25, { message: 'Preferences loaded.' });
 
-      // ── Step 3: marketplace search (the slow part — all adapters in parallel)
+      // Use preferredMarketplaces from saved prefs if request doesn't specify any
+      const resolvedMarketplaces =
+        request.context?.marketplaces ??
+        (preferences as any)?.preferredMarketplaces ??
+        [];
+
+      // ── Step 3: marketplace search ────────────────────────────────────────
       stream.step('searching_marketplaces', 30, {
         message: 'Searching Jumia, Konga, Jiji, eBay simultaneously...',
       });
 
       const rawProducts = await this.manager.searchAll(request.query, {
         currency: preferences?.currency || 'USD',
-        marketplaces: request.context?.marketplaces,
+        marketplaces: resolvedMarketplaces.length > 0 ? resolvedMarketplaces : undefined,
         intent,
       });
+
+      // No products at all — tell user immediately
+      if (rawProducts.length === 0) {
+        stream.error(
+          "No products found across all marketplaces for that query. Try a more specific product name.",
+          'NO_PRODUCTS'
+        );
+        return;
+      }
 
       stream.step('ranking_products', 62, {
         message: `Ranking ${rawProducts.length} products by quality, value, and seller trust...`,
       });
 
-      // ── Step 4: rank + build prompt (instant, CPU-only) ───────────────────
+      // ── Step 4: rank + prompt ─────────────────────────────────────────────
       const rankingResult = RankingEngine.rank(rawProducts, preferences, intent?.budgetMax);
-
       stream.step('analyzing_tradeoffs', 70, { message: 'Formulating trade-off analysis...' });
 
       const systemInstruction = PromptBuilder.buildSystemPrompt(
@@ -231,74 +237,73 @@ export class AIOrchestrator {
         message: 'Gemma is writing your recommendation...',
       });
 
-      const aiResult = await this.provider.generate(messages, {
-        temperature: 0.15,
-        systemInstruction,
-        responseMimeType: 'application/json',
-      });
+      let enrichedReport: RecommendationReport;
 
-      // ── Step 6: build report ──────────────────────────────────────────────
-      stream.step('validating_response', 92, { message: 'Finalising report...' });
+      try {
+        const aiResult = await this.provider.generate(messages, {
+          temperature: 0.15,
+          systemInstruction,
+          responseMimeType: 'application/json',
+        });
 
-      const rawJson = JSON.parse(aiResult.text);
-      const report = ReportGenerator.generate(
-        rankingResult,
-        rawJson.summary || rawJson.recommendation
-      );
-      const aiProducts: AIProductAnalysis[] = Array.isArray(rawJson.products)
-        ? rawJson.products
-        : [];
-      const enrichedReport = ReportGenerator.mergeAIProductAnalysis(report, aiProducts);
+        stream.step('validating_response', 92, { message: 'Finalising report...' });
 
-      // ── Step 7: persist memory + search history in parallel ───────────────
+        const rawJson = JSON.parse(aiResult.text);
+        const report = ReportGenerator.generate(rankingResult, rawJson.summary || rawJson.recommendation);
+        const aiProducts: AIProductAnalysis[] = Array.isArray(rawJson.products) ? rawJson.products : [];
+        enrichedReport = ReportGenerator.mergeAIProductAnalysis(report, aiProducts);
+      } catch (aiErr: any) {
+        // AI failed — still return a useful report using deterministic data only
+        StructuredLogger.warn('[AIOrchestrator] AI inference failed, using deterministic fallback', {
+          conversationId, error: aiErr.message,
+        });
+        stream.step('validating_response', 92, { message: 'Using deterministic analysis...' });
+        enrichedReport = ReportGenerator.generate(
+          rankingResult,
+          `Found ${rawProducts.length} products across ${[...new Set(rawProducts.map(p => p.marketplace))].join(', ')}. ` +
+          `Best match: ${rankingResult.topPick?.title ?? 'N/A'} at ${rankingResult.topPick?.price?.toFixed(2) ?? 'N/A'}.`
+        );
+      }
+
+      // Persist — awaited so failures surface in logs
       stream.step('saving_results', 96, { message: 'Saving to your history...' });
-
-      await Promise.all([
-        this.memory.appendMessages(
-          conversationId,
-          [
-            { role: 'user', content: request.query },
-            { role: 'assistant', content: enrichedReport.executiveSummary },
-          ],
-          userId
-        ),
-        searchHistoryRepo
-          .save({
+      try {
+        await Promise.all([
+          this.memory.appendMessages(conversationId,
+            [{ role: 'user', content: request.query },
+             { role: 'assistant', content: enrichedReport.executiveSummary }],
+            userId
+          ),
+          searchHistoryRepo.save({
             id: enrichedReport.id,
             query: request.query,
             timestamp: new Date(),
             resultsCount: rawProducts.length,
             userId,
             results: enrichedReport,
-          })
-          .catch((err: any) =>
-            StructuredLogger.warn('[AIOrchestrator] History save failed', {
-              conversationId,
-              error: err.message,
-            })
-          ),
-      ]);
+          }),
+        ]);
+      } catch (saveErr: any) {
+        StructuredLogger.warn('[AIOrchestrator] Persist failed (non-fatal)', {
+          conversationId, error: saveErr.message,
+        });
+      }
 
       StructuredLogger.info('[AIOrchestrator] processQueryStream complete', {
-        userId,
-        conversationId,
-        latencyMs: Date.now() - t0,
-        products: rawProducts.length,
+        userId, conversationId, latencyMs: Date.now() - t0,
+        metadata: { products: rawProducts.length },
       });
 
-      // Emit the full report — include conversationId + searchId for frontend linking
       stream.step('recommendation', 99, { report: enrichedReport });
       stream.end({
         message: 'Report ready.',
         report: enrichedReport,
         conversationId,
-        searchId: enrichedReport.id,  // lets frontend call GET /api/search/:id later
+        searchId: enrichedReport.id,
       });
     } catch (err: any) {
       StructuredLogger.error('[AIOrchestrator] processQueryStream failed', {
-        conversationId,
-        userId,
-        error: err.message,
+        conversationId, userId, error: err.message,
       });
       stream.error(err.message || String(err));
     }
@@ -308,7 +313,7 @@ export class AIOrchestrator {
 
   private _extractIntent(query: string): ShoppingIntent | undefined {
     try {
-      return require('../intent/extractor').extractIntent(query);
+      return extractIntent(query);
     } catch {
       return undefined;
     }

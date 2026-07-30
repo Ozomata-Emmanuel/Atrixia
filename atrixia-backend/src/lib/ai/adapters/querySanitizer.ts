@@ -1,181 +1,126 @@
 /**
  * querySanitizer.ts
  *
- * Parses a free-form shopping query into structured intent + clean search keywords.
+ * Two responsibilities:
+ * 1. sanitizeQuery()   — strips noise before sending to marketplace adapters
+ * 2. validateQuery()   — pre-flight check for queries that shouldn't be processed
+ *                        Returns null if OK, or an error message string if rejected
  */
 
-// ── Filler words ──────────────────────────────────────────────────────────────
-const FILLER_WORDS = new Set([
-  'i', 'me', 'my', 'we', 'our', 'you', 'your',
-  'a', 'an', 'the', 'this', 'that', 'these', 'those',
-  'is', 'are', 'was', 'were', 'be', 'been', 'being',
-  'have', 'has', 'had', 'do', 'does', 'did',
-  'will', 'would', 'could', 'should', 'may', 'might', 'can',
-  'need', 'want', 'looking', 'find', 'get', 'show', 'give', 'tell',
-  'for', 'to', 'of', 'in', 'on', 'at', 'by', 'with', 'from',
-  'about', 'into', 'through', 'during', 'before', 'after',
-  'above', 'between', 'out', 'off', 'over',
-  'again', 'further', 'then', 'once', 'here', 'there', 'when',
-  'where', 'why', 'how', 'all', 'both', 'each', 'few', 'more',
-  'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only',
-  'own', 'same', 'so', 'too', 'very', 'just', 'also',
-  // Shopping-specific filler — NOTE: do NOT include product words like "wireless", "gaming"
-  'please', 'something', 'anything', 'item', 'product', 'things',
-  'recommend', 'suggest', 'help', 'search', 'buy', 'purchase',
-  'show', 'give', 'tell', 'find',
-  'best', 'good', 'great', 'nice', 'cheap', 'affordable', 'quality',
-  'popular', 'recommended', 'top', 'rated',
-  'please', 'can', 'you',
-]);
+// ── Sanitize ──────────────────────────────────────────────────────────────────
 
-// Price / budget phrases to strip
-const STRIP_PHRASES = [
-  /\bunder\s+\$?\d[\d,.]*k?\b/gi,
-  /\bbelow\s+\$?\d[\d,.]*k?\b/gi,
-  /\bless\s+than\s+\$?\d[\d,.]*k?\b/gi,
-  /\bup\s+to\s+\$?\d[\d,.]*k?\b/gi,
-  /\baround\s+\$?\d[\d,.]*k?\b/gi,
-  /\bwithin\s+\$?\d[\d,.]*k?\b/gi,
-  /\$\d[\d,.]*k?\b/gi,
-  /\b\d[\d,.]*\s*dollars?\b/gi,
-  /\bshow\s+me\b/gi,
-  /\bfind\s+me\b/gi,
-  /\bi\s+(need|want|am\s+looking\s+for|would\s+like)\b/gi,
+const STOP_PHRASES = [
+  'i want to buy', 'i want', 'i need', 'i am looking for', "i'm looking for",
+  'am planning to buy', 'am planning buy', 'planning to buy', 'help me find',
+  'find me', 'show me', 'give me', 'can you find', 'looking for', 'search for',
+  'please find', 'i would like', 'suggest', 'recommend',
 ];
 
-// ── Parsed query intent ───────────────────────────────────────────────────────
-export interface ParsedQuery {
-  /** Clean keywords for marketplace search engines */
-  searchKeywords: string;
-  /** Detected product category (e.g. "laptop", "phone") */
-  category: string;
-  /** Budget ceiling in USD if mentioned */
-  budgetMax: number | null;
-  /** Keywords to exclude from results (accessories for this category) */
-  excludeKeywords: string[];
-  /** Original query */
-  raw: string;
-}
+export function sanitizeQuery(raw: string): string {
+  let q = raw.trim().toLowerCase();
 
-// Category keyword → accessory exclusion terms
-const CATEGORY_MAP: { pattern: RegExp; category: string; exclude: string[] }[] = [
-  {
-    pattern: /\blaptop|notebook|macbook|chromebook|thinkpad|elitebook|probook|ultrabook\b/i,
-    category: 'laptop',
-    exclude: ['charger', 'adapter', 'cable', 'bag', 'case', 'sleeve', 'stand', 'cooling pad', 'skin', 'cover', 'screen protector', 'battery', 'power supply', 'ac adapter', 'dc adapter'],
-  },
-  {
-    pattern: /\bphone|smartphone|iphone|android|pixel|galaxy\b/i,
-    category: 'phone',
-    exclude: [
-      'charger', 'cable', 'case', 'cover', 'screen protector', 'holder', 'mount',
-      'earphone', 'power bank', 'battery', 'adapter',
-      // Phone accessories that look like phones
-      'trigger', 'controller', 'gamepad', 'joystick', 'ring light',
-      'pop socket', 'grip', 'stand', 'dock', 'cradle',
-      'tempered glass', 'film', 'lens', 'selfie stick',
-    ],
-  },
-  {
-    pattern: /\btablet|ipad\b/i,
-    category: 'tablet',
-    exclude: ['charger', 'cable', 'case', 'cover', 'keyboard', 'stylus', 'stand', 'screen protector', 'battery', 'adapter'],
-  },
-  {
-    pattern: /\b(gaming\s+)?headphone|headset|earphone|earbud|airpod\b/i,
-    category: 'headphone',
-    exclude: ['case', 'cable', 'adapter', 'stand', 'holder', 'cushion'],
-  },
-  {
-    pattern: /\b(wireless\s+)?mouse\b/i,
-    category: 'mouse',
-    exclude: ['pad', 'mat', 'cable', 'receiver', 'dongle', 'case'],
-  },
-  {
-    pattern: /\bkeyboard\b/i,
-    category: 'keyboard',
-    exclude: ['cable', 'cover', 'skin', 'stand', 'wrist rest'],
-  },
-  {
-    pattern: /\bmonitor|display\b/i,
-    category: 'monitor',
-    exclude: ['cable', 'stand', 'arm', 'mount', 'screen protector'],
-  },
-  {
-    pattern: /\bchair|seat\b/i,
-    category: 'chair',
-    exclude: ['cover', 'cushion', 'mat', 'caster', 'replacement'],
-  },
-  {
-    pattern: /\b(running\s+)?shoe|sneaker|boot|sandal|trainer\b/i,
-    category: 'shoe',
-    exclude: ['lace', 'insole', 'bag', 'box', 'cleaning', 'polish'],
-  },
-  {
-    pattern: /\b\bcpu\b|processor\b/i,
-    category: 'cpu',
-    exclude: ['cooler', 'fan', 'paste', 'thermal', 'bracket', 'socket'],
-  },
-  {
-    pattern: /\btv\b|television\b/i,
-    category: 'tv',
-    exclude: ['remote', 'cable', 'mount', 'stand', 'screen protector', 'bracket'],
-  },
-];
-
-/**
- * Parses a conversational query into structured intent.
- */
-export function parseQuery(raw: string): ParsedQuery {
-  let q = raw.trim();
-
-  // Extract budget
-  let budgetMax: number | null = null;
-  const budgetMatch = q.match(/(?:under|below|less\s+than|up\s+to|within|around)\s+\$?([\d,]+(?:\.\d+)?)(k?)\b/i)
-    || q.match(/\$\s*([\d,]+(?:\.\d+)?)(k?)\b/i);
-  if (budgetMatch) {
-    let val = parseFloat(budgetMatch[1].replace(/,/g, ''));
-    if (budgetMatch[2]?.toLowerCase() === 'k') val *= 1000;
-    budgetMax = val;
-  }
-
-  // Detect product category
-  let category = 'general';
-  let excludeKeywords: string[] = [];
-  for (const entry of CATEGORY_MAP) {
-    if (entry.pattern.test(q)) {
-      category = entry.category;
-      excludeKeywords = entry.exclude;
-      break;
+  // Strip leading stop phrases
+  for (const phrase of STOP_PHRASES) {
+    if (q.startsWith(phrase)) {
+      q = q.slice(phrase.length).trim();
+      break; // only strip one leading phrase
     }
   }
 
-  // Strip price phrases
-  for (const pattern of STRIP_PHRASES) {
-    q = q.replace(pattern, ' ');
-  }
+  // Remove special characters except spaces, hyphens, and common punctuation
+  q = q.replace(/[^\w\s\-.,&]/g, ' ').replace(/\s{2,}/g, ' ').trim();
 
-  // Tokenise and remove filler — preserve brand names and product words
-  const tokens = q
-    .replace(/[^a-z0-9\s\-]/gi, ' ')
-    .split(/\s+/)
-    .map((t) => t.toLowerCase().trim())
-    .filter(Boolean);
-
-  const keywords = tokens.filter(
-    (t) => t.length > 1 && !FILLER_WORDS.has(t)
-  );
-
-  const searchKeywords = keywords.length > 0
-    ? keywords.slice(0, 6).join(' ')
-    : raw.trim();
-
-  return { searchKeywords, category, budgetMax, excludeKeywords, raw };
+  return q || raw.trim(); // never return empty
 }
 
-/**
- * Simple backward-compatible sanitizer — just returns the clean search string.
- */
-export function sanitizeQuery(raw: string): string {
-  return parseQuery(raw).searchKeywords;
+// ── Validate ──────────────────────────────────────────────────────────────────
+
+// Categories that are not shoppable on these marketplaces
+const NON_SHOPPING_PATTERNS = [
+  /\b(weather|forecast|temperature|climate)\b/i,
+  /\b(news|headline|latest news|breaking)\b/i,
+  /\b(recipe|how to cook|ingredients|bake|cooking)\b/i,
+  /\b(translate|translation|what does .* mean)\b/i,
+  /\b(capital of|president of|who is|what is the)\b/i,
+  /\b(math|calculate|solve|equation|\d+\s*[+\-*/]\s*\d+)\b/i,
+  /\b(joke|tell me a|funny|poem|write me)\b/i,
+  /\b(hello|hi there|how are you|good morning|greetings)\b/i,
+];
+
+// NSFW / adult content
+const NSFW_PATTERNS = [
+  /\bsex\s*toy|dildo|vibrator|butt\s*plug|fleshlight|masturbat|pornograph|onlyfans\b/i,
+  /\b(nude|naked|porn|xxx|adult\s+content|erotic)\b/i,
+  /\b(escort|prostitut|call\s*girl|brothel)\b/i,
+];
+
+// Dangerous / illegal items
+const ILLEGAL_PATTERNS = [
+  /\b(gun|firearm|pistol|rifle|ammo|ammunition|silencer|suppressor)\b/i,
+  /\b(drug|cocaine|heroin|fentanyl|meth|cannabis|weed|marijuana)\b/i,
+  /\b(explosive|bomb|grenade|weapon|knife\s*for\s*killing)\b/i,
+  /\b(hack|malware|phishing|stolen|counterfeit|fake\s*id|forged)\b/i,
+];
+
+// Too short / gibberish
+function isGibberish(q: string): boolean {
+  const trimmed = q.trim();
+  if (trimmed.length < 2) return true;
+  // All digits or all special chars
+  if (/^[\d\s]+$/.test(trimmed)) return true;
+  // Random character strings (no vowels, very short words)
+  const words = trimmed.split(/\s+/);
+  if (words.length === 1 && words[0].length < 2) return true;
+  return false;
+}
+
+export interface QueryValidation {
+  valid: boolean;
+  reason?: string;
+  /** Friendly message to show the user */
+  message?: string;
+}
+
+export function validateQuery(query: string): QueryValidation {
+  const q = query.trim();
+
+  if (isGibberish(q)) {
+    return {
+      valid: false,
+      reason: 'too_short',
+      message: "That's too short to search. Try something like \"wireless headphones\" or \"HP laptop under $300\".",
+    };
+  }
+
+  for (const pattern of NSFW_PATTERNS) {
+    if (pattern.test(q)) {
+      return {
+        valid: false,
+        reason: 'nsfw',
+        message: "Atrixia is a shopping assistant for everyday products. We can't help with that search.",
+      };
+    }
+  }
+
+  for (const pattern of ILLEGAL_PATTERNS) {
+    if (pattern.test(q)) {
+      return {
+        valid: false,
+        reason: 'illegal',
+        message: "We can't help with that. Try searching for a regular product instead.",
+      };
+    }
+  }
+
+  for (const pattern of NON_SHOPPING_PATTERNS) {
+    if (pattern.test(q)) {
+      return {
+        valid: false,
+        reason: 'non_shopping',
+        message: "I'm a shopping assistant — I search marketplaces for products. Try asking for something you'd like to buy.",
+      };
+    }
+  }
+
+  return { valid: true };
 }

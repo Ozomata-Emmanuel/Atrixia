@@ -43,6 +43,7 @@ export class SearchHistoryRepository implements ISearchSessionRepository {
         createdAt: session.timestamp,
       })
       .onConflictDoNothing();
+    console.log(`[SearchHistoryRepository] Saved search "${session.query}" for user ${userId}`);
   }
 
   /**
