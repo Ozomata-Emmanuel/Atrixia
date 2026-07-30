@@ -1,345 +1,176 @@
 // src/services/authService.js
 import api, { publicApi } from './api';
 
-let currentUser = null;
-
 export const authService = {
-  // --- SIGNUP / REGISTER ---
+  // --- SIGNUP ---
   signup: async (userData) => {
     try {
-      console.log('[AUTH SERVICE] Signup called with:', userData);
-      // const response = await publicApi.post('/auth/signup', userData);
-      // return response.data;
+      const response = await publicApi.post('/auth/signup', {
+        fullName: userData.fullName,
+        email: userData.email,
+        password: userData.password
+      });
       
-      // Simulated response for development
-      return {
-        success: true,
-        message: 'Verification code sent to your email',
-        data: { email: userData.email }
-      };
+      // Store email for verification step
+      if (response.data?.data?.email) {
+        localStorage.setItem('pendingVerificationEmail', response.data.data.email);
+      }
+      console.log("Full response:",response)
+      return response.data;
     } catch (error) {
-      console.error('[AUTH SERVICE] Signup error:', error);
+      console.log("Error response:".error)
       return {
         success: false,
-        message: error.response?.data?.message || 'Signup failed'
+        message: error.response?.data?.error || 'Signup failed'
       };
     }
   },
 
-  // --- VERIFY OTP ---
-  verifyOtp: async ({ email, otp }) => {
+  // --- VERIFY EMAIL ---
+  verifyEmail: async ({ email, code }) => {
     try {
-      console.log('[AUTH SERVICE] Verify OTP called with:', { email, otp });
-      // const response = await publicApi.post('/auth/verify-otp', {
-      //   email,
-      //   otp: String(otp),
-      // });
-      // return response.data;
+      const response = await publicApi.post('/auth/verify-email', {
+        email,
+        code: String(code)
+      });
       
-      // Simulated response
-      return {
-        success: true,
-        message: 'Email verified successfully'
-      };
+      localStorage.removeItem('pendingVerificationEmail');
+      return response.data;
     } catch (error) {
-      console.error('[AUTH SERVICE] Verify OTP error:', error);
       return {
         success: false,
-        message: error.response?.data?.message || 'Verification failed'
+        message: error.response?.data?.error || 'Verification failed'
       };
     }
   },
 
-  // --- RESEND OTP ---
-  resendOtp: async (email) => {
+  // --- RESEND VERIFICATION CODE ---
+  resendCode: async (email) => {
     try {
-      console.log('[AUTH SERVICE] Resend OTP called for:', email);
-      // const response = await publicApi.post('/auth/resend-otp', { email });
-      // return response.data;
-      
-      return {
-        success: true,
-        message: 'New verification code sent'
-      };
+      const response = await publicApi.post('/auth/resend-code', { email });
+      return response.data;
     } catch (error) {
-      console.error('[AUTH SERVICE] Resend OTP error:', error);
       return {
         success: false,
-        message: error.response?.data?.message || 'Failed to resend code'
+        message: error.response?.data?.error || 'Failed to resend code'
       };
     }
   },
 
-  // --- SIGNIN / LOGIN ---
+  // --- LOGIN ---
   signin: async (credentials) => {
     try {
-      console.log('[AUTH SERVICE] Signin called with:', credentials);
-      // const response = await api.post('/auth/signin', credentials);
-      // if (response.data.success) {
-      //   currentUser = response.data?.data?.user || null;
-      // }
-      // return response.data;
-      
-      // Simulated response
-      const user = {
-        id: '123e4567-e89b-12d3-a456-426614174000',
+      const response = await publicApi.post('/auth/login', {
         email: credentials.email,
-        fullName: 'John Doe',
-        emailVerified: true,
-        preferences: null
-      };
-      currentUser = user;
+        password: credentials.password
+      });
       
-      return {
-        success: true,
-        message: 'Login successful',
-        data: { user }
-      };
+      if (response.data?.success && response.data?.data) {
+        const { token, user } = response.data.data;
+        
+        // Store token
+        if (token) {
+          localStorage.setItem('accessToken', token);
+        }
+        
+        // Store user data if needed
+        if (user) {
+          localStorage.setItem('user', JSON.stringify(user));
+        }
+        
+        console.log("Full response:",response)
+        return response.data;
+      }
+      console.log(response)
+      return response.data;
+
     } catch (error) {
-      console.error('[AUTH SERVICE] Signin error:', error);
       return {
         success: false,
-        message: error.response?.data?.message || 'Login failed'
+        message: error.response?.data?.error || 'Login failed',
       };
-    }
-  },
-
-  // --- REFRESH TOKEN ---
-  refreshToken: async () => {
-    try {
-      console.log('[AUTH SERVICE] Refreshing token...');
-      // const response = await publicApi.post('/auth/refresh-token');
-      // return response.success;
-      return true;
-    } catch (error) {
-      console.error('[AUTH SERVICE] Refresh token error:', error);
-      return false;
     }
   },
 
   // --- LOGOUT ---
   logout: async () => {
     try {
-      console.log('[AUTH SERVICE] Logging out...');
-      // await api.post('/auth/logout');
+      await api.post('/auth/logout');
     } catch (e) {
-      console.warn('[AUTH SERVICE] Logout request failed:', e);
+      console.warn('Logout request failed:', e);
+    } finally {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('user');
+      localStorage.removeItem('pendingVerificationEmail');
     }
-    currentUser = null;
-    return { status: 'success', message: 'Logged out' };
   },
 
-  // --- FORGOT PASSWORD ---
-  forgotPassword: async (email) => {
+  // --- GET USER PROFILE ---
+  getUserProfile: async () => {
     try {
-      console.log('[AUTH SERVICE] Forgot password called for:', email);
-      // const response = await publicApi.post('/auth/forgot-password', { email });
-      // return response.data;
-      
-      return {
-        success: true,
-        message: 'Password reset code sent to your email'
-      };
+      const response = await api.get('/user/profile');
+      return response.data;
     } catch (error) {
-      console.error('[AUTH SERVICE] Forgot password error:', error);
       return {
         success: false,
-        message: error.response?.data?.message || 'Failed to send reset code'
+        message: error.response?.data?.error || 'Failed to fetch profile'
       };
-    }
-  },
-
-  // --- RESET PASSWORD ---
-  resetPassword: async (email, otp, newPassword) => {
-    try {
-      console.log('[AUTH SERVICE] Reset password called');
-      // const response = await publicApi.post('/auth/reset-password', { 
-      //   email: email.trim(), 
-      //   otp: String(otp).trim(), 
-      //   new_password: newPassword 
-      // });
-      // return response.data;
-      
-      return {
-        success: true,
-        message: 'Password reset successful'
-      };
-    } catch (error) {
-      console.error('[AUTH SERVICE] Reset password error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Failed to reset password'
-      };
-    }
-  },
-
-  // --- CHANGE PASSWORD (authenticated user) ---
-  changePassword: async (oldPassword, newPassword) => {
-    try {
-      console.log('[AUTH SERVICE] Change password called');
-      // const response = await api.post('/auth/change-password', { 
-      //   old_password: oldPassword, 
-      //   new_password: newPassword 
-      // });
-      // return response.data;
-      
-      return {
-        success: true,
-        message: 'Password changed successfully'
-      };
-    } catch (error) {
-      console.error('[AUTH SERVICE] Change password error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Failed to change password'
-      };
-    }
-  },
-
-  // --- GET CURRENT USER PROFILE ---
-  getCurrentUser: async () => {
-    if (currentUser) return currentUser;
-
-    try {
-      console.log('[AUTH SERVICE] Fetching current user...');
-      // const response = await api.get('/auth/me');
-      // if (response.data.success) {
-      //   currentUser = response.data?.data || response.data;
-      //   return currentUser;
-      // }
-      return null;
-    } catch (error) {
-      console.error('[AUTH SERVICE] Get current user error:', error);
-      return null;
     }
   },
 
   // --- GET USER PREFERENCES ---
   getUserPreferences: async () => {
     try {
-      console.log('[AUTH SERVICE] Fetching user preferences...');
-      // const response = await api.get('/preferences');
-      // return response.data;
-      
-      // Simulated response matching the schema
-      return {
-        success: true,
-        data: {
-          id: '456e7890-e89b-12d3-a456-426614174000',
-          userId: currentUser?.id,
-          budgetMin: '500',
-          budgetMax: '5000',
-          preferredCurrency: 'USD',
-          prioritizePrice: true,
-          prioritizeQuality: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-      };
+      const response = await api.get('/user/preferences');
+      return response.data; // Returns { currency, budgetMin, budgetMax, prioritizePrice, prioritizeQuality, prioritizeShipping, prioritizeSeller }
     } catch (error) {
       console.error('[AUTH SERVICE] Get preferences error:', error);
       return {
-        success: false,
-        message: error.response?.data?.message || 'Failed to fetch preferences'
+        currency: 'USD',
+        budgetMin: 0,
+        budgetMax: 500,
+        prioritizePrice: true,
+        prioritizeQuality: false,
+        prioritizeShipping: false,
+        prioritizeSeller: false,
       };
     }
   },
 
-  // --- UPDATE USER PREFERENCES ---
+  // --- UPDATE USER PREFERENCES (only send changed fields) ---
   updateUserPreferences: async (preferencesData) => {
     try {
-      console.log('[AUTH SERVICE] Updating preferences:', preferencesData);
-      // const response = await api.put('/preferences', preferencesData);
-      // return response.data;
+      // Only send fields that are actually provided
+      const payload = {};
+      if (preferencesData.currency !== undefined) payload.currency = preferencesData.currency;
+      if (preferencesData.budgetMin !== undefined) payload.budgetMin = preferencesData.budgetMin;
+      if (preferencesData.budgetMax !== undefined) payload.budgetMax = preferencesData.budgetMax;
+      if (preferencesData.prioritizePrice !== undefined) payload.prioritizePrice = preferencesData.prioritizePrice;
+      if (preferencesData.prioritizeQuality !== undefined) payload.prioritizeQuality = preferencesData.prioritizeQuality;
+      if (preferencesData.prioritizeShipping !== undefined) payload.prioritizeShipping = preferencesData.prioritizeShipping;
+      if (preferencesData.prioritizeSeller !== undefined) payload.prioritizeSeller = preferencesData.prioritizeSeller;
       
-      return {
-        success: true,
-        message: 'Preferences updated successfully',
-        data: preferencesData
-      };
+      const response = await api.put('/user/preferences', payload);
+      console.log('[AUTH SERVICE] Preferences updated:', response.data);
+      return response.data;
     } catch (error) {
       console.error('[AUTH SERVICE] Update preferences error:', error);
       return {
         success: false,
-        message: error.response?.data?.message || 'Failed to update preferences'
+        message: error.response?.data?.error || 'Failed to update preferences'
       };
     }
   },
 
-  // --- SEND AI QUERY (Search) ---
-  sendAiQuery: async (query, filters, preferences) => {
-    try {
-      console.log('[AUTH SERVICE] Sending AI query:', { query, filters, preferences });
-      
-      const searchData = {
-        query,
-        filters: [
-          ...filters.map(f => ({ name: f.name, value: f.value })),
-          // Include constant preferences as filters
-          preferences?.budgetMin && preferences?.budgetMax ? {
-            name: 'Budget Range',
-            value: `${preferences.preferredCurrency} ${preferences.budgetMin} - ${preferences.budgetMax}`
-          } : null,
-          preferences?.prioritizePrice ? {
-            name: 'Priority',
-            value: 'Best Price'
-          } : null,
-          preferences?.prioritizeQuality ? {
-            name: 'Priority',
-            value: 'Best Quality'
-          } : null,
-        ].filter(Boolean),
-        results: []
-      };
-      
-      // const response = await api.post('/searches', searchData);
-      // return response.data;
-      
-      console.log('[AUTH SERVICE] Search data prepared:', searchData);
-      
-      return {
-        success: true,
-        message: 'Query processed',
-        data: searchData
-      };
-    } catch (error) {
-      console.error('[AUTH SERVICE] AI Query error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Failed to process query'
-      };
-    }
+
+  // --- GET CURRENT USER ---
+  getCurrentUser: () => {
+    const userStr = localStorage.getItem('user');
+    return userStr ? JSON.parse(userStr) : null;
   },
 
-  // --- CHECK AUTHENTICATION ---
-  isAuthenticated: async () => {
-    try {
-      const user = await authService.getCurrentUser();
-      return !!user;
-    } catch {
-      return false;
-    }
-  },
-
-  // --- ACCESSORS ---
-  getCurrentUserData: () => {
-    return currentUser;
-  },
-
-  clearUser: () => {
-    currentUser = null;
-  },
-
-  // --- INITIALIZE AUTH STATE ---
-  initializeAuth: async () => {
-    try {
-      const user = await authService.getCurrentUser();
-      if (user) {
-        return { isAuthenticated: true, user };
-      }
-      return { isAuthenticated: false, user: null };
-    } catch {
-      return { isAuthenticated: false, user: null };
-    }
-  },
+  // --- CHECK AUTH ---
+  isAuthenticated: () => {
+    return !!localStorage.getItem('accessToken');
+  }
 };

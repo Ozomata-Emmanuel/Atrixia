@@ -1,8 +1,9 @@
 // pages/auth/VerifyEmail.jsx
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import { FiMail, FiCheckCircle, FiArrowRight, FiRefreshCw } from 'react-icons/fi';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { FiMail, FiCheckCircle, FiArrowRight, FiRefreshCw, FiAlertCircle } from 'react-icons/fi';
 import AnimatedGridBackground from '../../components/AnimatedGridBackground';
+import { authService } from '../../services/authService';
 
 const VerifyEmail = () => {
   const [code, setCode] = useState(['', '', '', '', '', '']);
@@ -10,11 +11,30 @@ const VerifyEmail = () => {
   const [canResend, setCanResend] = useState(true);
   const [timer, setTimer] = useState(30);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const [error, setError] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
   
   const inputRefs = useRef([]);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
+  // Get email from URL params or session storage
+  useEffect(() => {
+    const emailFromUrl = searchParams.get('email');
+    const emailFromStorage = sessionStorage.getItem('verificationEmail');
+    const email = emailFromUrl || emailFromStorage || '';
+    
+    if (email) {
+      setUserEmail(email);
+      if (!emailFromStorage) {
+        sessionStorage.setItem('verificationEmail', email);
+      }
+    }
+  }, [searchParams]);
+
+  // Resend timer countdown
   useEffect(() => {
     if (!canResend && timer > 0) {
       const interval = setInterval(() => {
@@ -28,20 +48,40 @@ const VerifyEmail = () => {
 
   // Auto-submit when all digits are filled
   useEffect(() => {
-    if (code.every(digit => digit !== '') && !isSuccess) {
-      handleVerify();
+    if (code.every(digit => digit !== '') && !isSuccess && !isVerifying) {
+      // Small delay to let user see all digits filled
+      const timeout = setTimeout(() => {
+        handleVerify();
+      }, 300);
+      return () => clearTimeout(timeout);
     }
   }, [code]);
 
-  const handleResend = () => {
-    if (canResend) {
-      setResendCount(prev => prev + 1);
-      setCanResend(false);
-      setTimer(30);
-      setCode(['', '', '', '', '', '']);
-      setError('');
-      // Focus first input
-      inputRefs.current[0]?.focus();
+  const handleResend = async () => {
+    if (!canResend || isResending) return;
+    
+    setIsResending(true);
+    setError('');
+    
+    try {
+      const result = await authService.resendCode(userEmail);
+      
+      if (result.success) {
+        setResendCount(prev => prev + 1);
+        setCanResend(false);
+        setTimer(30);
+        setCode(['', '', '', '', '', '']);
+        setError('');
+        // Focus first input
+        inputRefs.current[0]?.focus();
+      } else {
+        setError(result.message || 'Failed to resend code. Please try again.');
+      }
+    } catch (err) {
+      console.error('[VerifyEmail] Resend error:', err);
+      setError('Unable to resend code. Please check your connection.');
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -134,21 +174,32 @@ const VerifyEmail = () => {
     setError('');
 
     try {
-      // Simulate API call - replace with your actual verification logic
-      await new Promise((resolve, reject) => {
-        setTimeout(() => {
-          // For demo: accept any code except "000000"
-          if (fullCode === '000000') {
-            reject(new Error('Invalid verification code'));
-          } else {
-            resolve();
-          }
-        }, 1500);
+      const result = await authService.verifyEmail({ 
+        email: userEmail, 
+        code: fullCode 
       });
-
-      setIsSuccess(true);
+      
+      if (result.success) {
+        setIsSuccess(true);
+        // Clear session storage
+        sessionStorage.removeItem('verificationEmail');
+      } else {
+        // Handle specific error cases
+        if (result.message?.toLowerCase().includes('expired')) {
+          setError('Verification code has expired. Please request a new one.');
+        } else if (result.message?.toLowerCase().includes('invalid')) {
+          setError('Invalid verification code. Please check and try again.');
+        } else if (result.message?.toLowerCase().includes('already verified')) {
+          setIsSuccess(true);
+        } else {
+          setError(result.message || 'Verification failed. Please try again.');
+        }
+        setCode(['', '', '', '', '', '']);
+        inputRefs.current[0]?.focus();
+      }
     } catch (err) {
-      setError(err.message || 'Invalid verification code. Please try again.');
+      console.error('[VerifyEmail] Verification error:', err);
+      setError('Unable to verify. Please check your connection and try again.');
       setCode(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();
     } finally {
@@ -157,7 +208,7 @@ const VerifyEmail = () => {
   };
 
   const handleManualVerify = () => {
-    if (!isVerifying && !isSuccess) {
+    if (!isVerifying && !isSuccess && code.some(digit => digit !== '')) {
       handleVerify();
     }
   };
@@ -184,7 +235,7 @@ const VerifyEmail = () => {
                 Your email has been successfully verified. You can now sign in to your account.
               </p>
               <Link
-                to="/signin"
+                to={`/signin?verified=true`}
                 className="w-full inline-flex items-center justify-center gap-2 bg-[#009FB8] text-white px-6 py-3 rounded-xl font-semibold hover:bg-[#008ba3] transition-all hover:shadow-lg"
               >
                 Continue to Sign In <FiArrowRight />
@@ -199,9 +250,14 @@ const VerifyEmail = () => {
               <h2 className="text-3xl font-bold text-[#1a1a1a] font-serif-brand mb-2">
                 Verify Your Email
               </h2>
-              <p className="text-[#666666] mb-8">
-                We've sent a 6-digit verification code to your email. Enter the code below to verify your account.
+              <p className="text-[#666666] mb-2">
+                We've sent a 6-digit verification code to
               </p>
+              {userEmail && (
+                <p className="text-[#333333] font-medium mb-6">
+                  {userEmail}
+                </p>
+              )}
 
               {/* 6-Digit Code Input */}
               <div className="flex gap-3 justify-center mb-6">
@@ -217,36 +273,43 @@ const VerifyEmail = () => {
                     onChange={(e) => handleInputChange(index, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(index, e)}
                     onPaste={handlePaste}
+                    disabled={isVerifying}
                     className={`w-12 h-14 text-center text-xl font-bold rounded-xl border-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                       error
                         ? 'border-red-300 focus:border-red-500 focus:ring-red-200'
                         : digit
                         ? 'border-[#009FB8] focus:border-[#009FB8] focus:ring-[#009FB8]/20'
                         : 'border-gray-200 focus:border-[#009FB8] focus:ring-[#009FB8]/20'
-                    }`}
+                    } ${isVerifying ? 'opacity-50 cursor-not-allowed' : ''}`}
                     style={{
-                      boxShadow: digit ? '0 0 0 1px rgba(0, 159, 184, 0.1)' : 'none'
+                      boxShadow: digit && !error ? '0 0 0 1px rgba(0, 159, 184, 0.1)' : 'none'
                     }}
                   />
                 ))}
               </div>
 
               {error && (
-                <p className="text-red-500 text-sm mb-4 animate-fadeIn">{error}</p>
+                <div className="bg-red-50 border border-red-200 text-red-600 p-3 rounded-xl mb-4 text-sm flex items-start gap-2">
+                  <FiAlertCircle className="text-red-400 mt-0.5 shrink-0" />
+                  <span>{error}</span>
+                </div>
               )}
 
               <button
                 onClick={handleManualVerify}
-                disabled={isVerifying || code.some(digit => digit === '')}
+                disabled={isVerifying || code.every(digit => digit === '')}
                 className={`w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all mb-4 ${
-                  isVerifying || code.some(digit => digit === '')
+                  isVerifying || code.every(digit => digit === '')
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                     : 'bg-[#009FB8] text-white hover:bg-[#008ba3] hover:shadow-lg'
                 }`}
               >
                 {isVerifying ? (
                   <>
-                    <FiRefreshCw className="animate-spin" />
+                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
                     Verifying...
                   </>
                 ) : (
@@ -259,14 +322,23 @@ const VerifyEmail = () => {
                   Didn't receive the code?{' '}
                   <button
                     onClick={handleResend}
-                    disabled={!canResend}
-                    className={`font-medium transition ${
-                      canResend 
+                    disabled={!canResend || isResending}
+                    className={`font-medium transition inline-flex items-center gap-1 ${
+                      canResend && !isResending
                         ? 'text-[#009FB8] hover:underline' 
                         : 'text-[#999999] cursor-not-allowed'
                     }`}
                   >
-                    {canResend ? 'Resend Code' : `Resend in ${timer}s`}
+                    {isResending ? (
+                      <>
+                        <FiRefreshCw className="animate-spin" />
+                        Sending...
+                      </>
+                    ) : canResend ? (
+                      'Resend Code'
+                    ) : (
+                      `Resend in ${timer}s`
+                    )}
                   </button>
                 </p>
                 {resendCount > 0 && (

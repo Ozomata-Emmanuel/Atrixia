@@ -1,44 +1,94 @@
 // context/AuthContext.jsx
-import React, { createContext, useState, useContext } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { authService } from '../services/authService';
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('attrixia_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const login = (email, password) => {
-    const userData = { email, name: email.split('@')[0] };
-    setUser(userData);
-    localStorage.setItem('attrixia_user', JSON.stringify(userData));
-    return true;
+  // Initialize auth state on mount
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        const token = localStorage.getItem('accessToken');
+        if (token) {
+          const profileResult = await authService.getUserProfile();
+          if (profileResult.success) {
+            setUser(profileResult.data);
+            setIsAuthenticated(true);
+          } else {
+            // Token might be expired
+            localStorage.removeItem('accessToken');
+          }
+        }
+      } catch (error) {
+        console.error('[AuthContext] Init error:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initAuth();
+  }, []);
+
+  const login = async (email, password) => {
+    const result = await authService.signin({ email, password });
+    
+    if (result.success && result.data?.user) {
+      setUser(result.data.user);
+      setIsAuthenticated(true);
+    }
+    
+    return result;
   };
 
-  const signup = (email, password) => {
-    const userData = { email, name: email.split('@')[0] };
-    setUser(userData);
-    localStorage.setItem('attrixia_user', JSON.stringify(userData));
-    return true;
+  const signup = async (userData) => {
+    const result = await authService.signup(userData);
+    return result;
   };
 
-  const logout = () => {
+  const verifyEmail = async (email, code) => {
+    return await authService.verifyEmail({ email, code });
+  };
+
+  const resendCode = async (email) => {
+    return await authService.resendCode(email);
+  };
+
+  const logout = async () => {
+    await authService.logout();
     setUser(null);
-    localStorage.removeItem('attrixia_user');
+    setIsAuthenticated(false);
+    localStorage.removeItem('accessToken');
+  };
+
+  const value = {
+    user,
+    isAuthenticated,
+    isLoading,
+    login,
+    signup,
+    verifyEmail,
+    resendCode,
+    logout,
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-};
+export default AuthContext;

@@ -235,18 +235,18 @@ const ReportSummary = ({ report }) => {
 
       {/* Expandable Content */}
       <div 
-  id="report-summary-content"
-  className="grid transition-all duration-500 ease-in-out"
-  style={{
-    gridTemplateRows: isExpanded ? '1fr' : '0fr',
-  }}
->
+        id="report-summary-content"
+        className="grid transition-all duration-500 ease-in-out"
+        style={{
+          gridTemplateRows: isExpanded ? '1fr' : '0fr',
+        }}
+      >
         <div className="overflow-hidden">
           <div 
-      className={`p-4 pt-0 space-y-4 border-t border-gray-100 transition-all duration-500 ease-in-out ${
-        isExpanded ? 'translate-y-0 opacity-100' : '-translate-y-2 opacity-0'
-      }`}
-    >
+            className={`p-4 pt-0 space-y-4 border-t border-gray-100 transition-all duration-500 ease-in-out ${
+              isExpanded ? 'translate-y-0 opacity-100' : '-translate-y-2 opacity-0'
+            }`}
+          >
             {/* Executive Summary */}
             {report.executiveSummary && (
               <p className="text-sm text-[#666666] leading-relaxed">

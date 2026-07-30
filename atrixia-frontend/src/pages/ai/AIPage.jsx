@@ -1,41 +1,110 @@
 // pages/ai/AIPage.jsx
-import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import { authService } from '../../services/authService';
-import { 
-  FiPlus, FiX, FiSend, FiMenu, FiUser, FiHeart, 
-  FiLogOut, FiMessageSquare, FiTrash2, FiHome, FiChevronLeft, FiChevronRight,
-  FiChevronDown, FiChevronUp, FiFilter, FiDollarSign, FiStar, FiTrendingUp,
-  FiSettings, FiToggleLeft, FiToggleRight
-} from 'react-icons/fi';
+import React, { useState, useEffect, useRef } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+import { authService } from "../../services/authService";
+import {
+  FiPlus,
+  FiX,
+  FiSend,
+  FiMenu,
+  FiUser,
+  FiHeart,
+  FiLogOut,
+  FiMessageSquare,
+  FiTrash2,
+  FiHome,
+  FiChevronLeft,
+  FiChevronRight,
+  FiChevronDown,
+  FiChevronUp,
+  FiFilter,
+  FiDollarSign,
+  FiStar,
+  FiTrendingUp,
+  FiSettings,
+  FiToggleLeft,
+  FiToggleRight,
+  FiTruck,
+  FiShield,
+} from "react-icons/fi";
 // import { FaRegBookmark } from "react-icons/io5";
 import { FaRegBookmark } from "react-icons/fa6";
 import { IoToggle } from "react-icons/io5";
 import { PiSidebarSimpleLight } from "react-icons/pi";
 import { FiSidebar } from "react-icons/fi";
-import { mockProducts } from '../../data/mockData';
+import { mockProducts } from "../../data/mockData";
 import { IoArrowUp } from "react-icons/io5";
 import { IoMdStar } from "react-icons/io";
-import AnimatedGridBackground from '../../components/AnimatedGridBackground';
+import AnimatedGridBackground from "../../components/AnimatedGridBackground";
 
-import { aiService } from '../../services/aiService';
-import ProductCard from '../../components/ai/ProductCard';
-import StreamingProgress from '../../components/ai/StreamingProgress';
-import ReportSummary from '../../components/ai/ReportSummary';
+import { aiService } from "../../services/aiService";
+import ProductCard from "../../components/ai/ProductCard";
+import StreamingProgress from "../../components/ai/StreamingProgress";
+import ReportSummary from "../../components/ai/ReportSummary";
+import { searchService } from "../../services/searchService";
+import { BiMessageSquareAdd } from "react-icons/bi";
+
+/**
+ * Handles SSE stream events from the real backend.
+ * This keeps the fetch handler clean by delegating event processing.
+ */
+function handleStreamEvent(data, context) {
+  const { aiMessageId, userMessage, constantFilters, abortController } =
+    context;
+
+  // You'll need to access these state setters.
+  // Either pass them as context or use a different approach.
+  // For now, this shows the structure of how to handle each event type.
+
+  switch (data.type) {
+    case "progress":
+      // Handle progress update
+      console.log("[Stream] Progress:", data.progress, data.message);
+      break;
+
+    case "product":
+      // Handle new product found
+      console.log("[Stream] Product:", data.product?.title);
+      break;
+
+    case "report_update":
+      // Handle report update
+      console.log("[Stream] Report update");
+      break;
+
+    case "complete":
+      // Handle stream completion
+      console.log("[Stream] Complete:", data);
+      break;
+
+    case "result":
+      // Handle non-streaming result
+      console.log("[Stream] Result:", data);
+      break;
+
+    case "error":
+      // Handle error from server
+      console.error("[Stream] Server error:", data.message);
+      break;
+
+    default:
+      console.log("[Stream] Unknown event:", data.type, data);
+  }
+}
 
 const AIPage = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [customFilters, setCustomFilters] = useState([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [drawerClosing, setDrawerClosing] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [filterName, setFilterName] = useState('');
-  const [filterValue, setFilterValue] = useState('');
+  const [filterName, setFilterName] = useState("");
+  const [filterValue, setFilterValue] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -49,58 +118,116 @@ const AIPage = () => {
   const [streamProducts, setStreamProducts] = useState([]);
   const [reportData, setReportData] = useState(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [availableMarketplaces, setAvailableMarketplaces] = useState([]);
   const messagesEndRef = useRef(null);
   const sidebarRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const { chatId } = useParams();
-
+  const idCounter = useRef(0);
+  const generateId = () => `${Date.now()}-${++idCounter.current}`;
   // Load chat from history when chatId changes
+
+  // Fetch marketplaces on mount
+  useEffect(() => {
+    const fetchMarketplaces = async () => {
+      try {
+        const result = await searchService.getMarketplaces();
+        if (result.success) {
+          setAvailableMarketplaces(result.data);
+        }
+      } catch (error) {
+        console.error("[AIPage] Failed to fetch marketplaces:", error);
+      }
+    };
+    fetchMarketplaces();
+
+    const fetchHistory = async () => {
+      try {
+        const result = await searchService.getHistory();
+        if (result.success) {
+          console.log(result);
+        }
+      } catch (error) {
+        console.error("[AIPage] Failed to fetch history:", error);
+      }
+    };
+    fetchHistory();
+  }, []);
+
   useEffect(() => {
     if (!chatId) return;
-    
-    const saved = JSON.parse(localStorage.getItem('attrixia_chat_history') || '[]');
-    const chat = saved.find(c => c.id === chatId || String(c.id) === chatId);
-    
+
+    const saved = JSON.parse(
+      localStorage.getItem("attrixia_chat_history") || "[]",
+    );
+    const chat = saved.find((c) => String(c.id) === String(chatId));
+
     if (chat) {
-      setMessages(chat.messages || []);
+      // Deduplicate by ID
+      const seen = new Set();
+      const uniqueMessages = (chat.messages || []).filter((msg) => {
+        if (seen.has(msg.id)) return false;
+        seen.add(msg.id);
+        return true;
+      });
+      setMessages(uniqueMessages);
       if (chat.reportData) {
         setReportData(chat.reportData);
       }
     }
   }, [chatId]);
 
-  // Fetch user preferences on mount
+  // Fetch preferences useEffect:
   useEffect(() => {
     const fetchPreferences = async () => {
-      const result = await authService.getUserPreferences();
-      if (result.success) {
-        setUserPreferences(result.data);
-        setTempPreferences(result.data);
+      try {
+        const result = await authService.getUserPreferences();
+        // Backend returns directly: { currency, budgetMin, budgetMax, prioritizePrice, ... }
+        if (result) {
+          const prefs = {
+            // Map backend field names to your frontend field names
+            preferredCurrency: result.currency || "USD",
+            budgetMin: result.budgetMin || 0,
+            budgetMax: result.budgetMax || 500,
+            prioritizePrice: result.prioritizePrice ?? true,
+            prioritizeQuality: result.prioritizeQuality ?? false,
+            prioritizeShipping: result.prioritizeShipping ?? false,
+            prioritizeSeller: result.prioritizeSeller ?? false,
+          };
+          setUserPreferences(prefs);
+          setTempPreferences({ ...prefs });
+        }
+      } catch (error) {
+        console.error("[AIPage] Failed to fetch preferences:", error);
       }
     };
     fetchPreferences();
   }, []);
 
   useEffect(() => {
-    const saved = localStorage.getItem('attrixia_chat_history');
+    const saved = localStorage.getItem("attrixia_chat_history");
     if (saved) {
       setChatHistory(JSON.parse(saved));
     }
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   // Close sidebar when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (isSidebarOpen && sidebarRef.current && !sidebarRef.current.contains(event.target)) {
+      if (
+        isSidebarOpen &&
+        sidebarRef.current &&
+        !sidebarRef.current.contains(event.target)
+      ) {
         setIsSidebarOpen(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isSidebarOpen]);
 
   const closeDrawer = () => {
@@ -129,20 +256,42 @@ const AIPage = () => {
     }, 300);
   };
 
-  const savePreferences = () => {
+  const savePreferences = async () => {
+    // Update local state
     setUserPreferences(tempPreferences);
     closePreferencesModal();
-    // Log the update
-    console.log('[PREFERENCES] Updated preferences:', tempPreferences);
-    // Uncomment when ready to connect to backend
-    // authService.updateUserPreferences(tempPreferences);
+
+    // Map frontend field names to backend field names
+    const backendPrefs = {
+      currency: tempPreferences.preferredCurrency,
+      budgetMin: tempPreferences.budgetMin,
+      budgetMax: tempPreferences.budgetMax,
+      prioritizePrice: tempPreferences.prioritizePrice,
+      prioritizeQuality: tempPreferences.prioritizeQuality,
+      prioritizeShipping: tempPreferences.prioritizeShipping,
+      prioritizeSeller: tempPreferences.prioritizeSeller,
+    };
+
+    try {
+      const result = await authService.updateUserPreferences(backendPrefs);
+      if (result.success !== false) {
+        console.log("[PREFERENCES] Updated successfully");
+      } else {
+        console.warn("[PREFERENCES] Update failed:", result.message);
+      }
+    } catch (error) {
+      console.error("[PREFERENCES] Error updating:", error);
+    }
   };
 
   const addFilter = () => {
     if (filterName.trim() && filterValue.trim()) {
-      setCustomFilters([...customFilters, { name: filterName, value: filterValue }]);
-      setFilterName('');
-      setFilterValue('');
+      setCustomFilters([
+        ...customFilters,
+        { name: filterName, value: filterValue },
+      ]);
+      setFilterName("");
+      setFilterValue("");
       closeDrawer();
     }
   };
@@ -159,41 +308,40 @@ const AIPage = () => {
     if (!input.trim() && customFilters.length === 0) return;
 
     let userMessage = input.trim();
-    
-    const allFilters = [...customFilters];
-    
+
+    // Update constant filters to include all preferences:
     const constantFilters = [];
     if (userPreferences) {
       if (userPreferences.budgetMin && userPreferences.budgetMax) {
         constantFilters.push({
-          name: 'Budget Range',
-          value: `${userPreferences.preferredCurrency} ${userPreferences.budgetMin} - ${userPreferences.budgetMax}`
+          name: "Budget Range",
+          value: `${userPreferences.preferredCurrency} ${userPreferences.budgetMin} - ${userPreferences.budgetMax}`,
         });
       }
       if (userPreferences.prioritizePrice) {
-        constantFilters.push({
-          name: 'Priority',
-          value: 'Best Price'
-        });
+        constantFilters.push({ name: "Priority", value: "Best Price" });
       }
       if (userPreferences.prioritizeQuality) {
-        constantFilters.push({
-          name: 'Priority',
-          value: 'Best Quality'
-        });
+        constantFilters.push({ name: "Priority", value: "Best Quality" });
+      }
+      if (userPreferences.prioritizeShipping) {
+        constantFilters.push({ name: "Priority", value: "Fast Shipping" });
+      }
+      if (userPreferences.prioritizeSeller) {
+        constantFilters.push({ name: "Priority", value: "Trusted Seller" });
       }
     }
 
-    const newMessage = { 
-      id: Date.now(), 
-      type: 'user', 
-      content: userMessage || 'Looking for products',
+    const newMessage = {
+      id: generateId(),
+      type: "user",
+      content: userMessage || "Looking for products",
       customFilters: [...customFilters],
-      constantFilters: constantFilters
+      constantFilters: constantFilters,
     };
-    
-    setMessages(prev => [...prev, newMessage]);
-    setInput('');
+
+    setMessages((prev) => [...prev, newMessage]);
+    setInput("");
     setIsTyping(true);
     setIsStreaming(true);
     setStreamProgress(null);
@@ -201,104 +349,415 @@ const AIPage = () => {
     setReportData(null);
 
     // Create AI placeholder message
-    const aiMessageId = Date.now() + 1;
-    setMessages(prev => [...prev, {
-      id: aiMessageId,
-      type: 'ai',
-      content: '',
-      products: [],
-      isStreaming: true,
-      streamProgress: null,
-      streamProducts: [],
-      reportData: null,
-    }]);
-
-    // Use simulated streaming (replace with real service when backend is ready)
-    aiService.simulateStream(
-      userMessage,
-      customFilters,
-      userPreferences,
+    const aiMessageId = generateId();
+    setMessages((prev) => [
+      ...prev,
       {
+        id: aiMessageId,
+        type: "ai",
+        content: "",
+        products: [],
+        isStreaming: true,
+        streamProgress: null,
+        streamProducts: [],
+        reportData: null,
+      },
+    ]);
+
+    // Extract marketplaces from filters
+    const marketplaceFilter = customFilters.find(
+      (f) => f.name.toLowerCase() === "marketplace",
+    );
+    const marketplaces = marketplaceFilter
+      ? [marketplaceFilter.value.toLowerCase()]
+      : undefined;
+
+    // Check if user is authenticated
+    const token = localStorage.getItem("accessToken");
+
+    // ---- CHOOSE BACKEND OR SIMULATION ----
+    // Set to false to use simulation, true to use real backend
+    const USE_REAL_BACKEND = true;
+
+    // In handleSendMessage, replace the "REAL BACKEND STREAMING" section:
+
+    if (USE_REAL_BACKEND && token) {
+      // ============ REAL BACKEND STREAMING ============
+      const BASE_URL =
+        import.meta.env.VITE_API_URL || "https://atrixia.onrender.com/api";
+      const abortController = new AbortController();
+
+      fetch(`${BASE_URL}/search?stream=true`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          query: userMessage,
+          // marketplaces,
+          // context: {
+          //   preferences: userPreferences,
+          //   messages: [],
+          // },
+        }),
+        signal: abortController.signal,
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(
+              errorData.message || `Search failed (${response.status})`,
+            );
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              // Handle SSE format: "event: <type>\ndata: <json>"
+              if (line.startsWith("data: ")) {
+                try {
+                  const jsonStr = line.slice(6);
+                  const data = JSON.parse(jsonStr);
+
+                  // Update progress from metadata.progress
+                  if (data.progress != null) {
+                    setStreamProgress({
+                      progress: data.progress,
+                      message: data.metadata?.message || "Processing...",
+                    });
+
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === aiMessageId
+                          ? {
+                              ...msg,
+                              streamProgress: {
+                                progress: data.progress,
+                                message:
+                                  data.metadata?.message || "Processing...",
+                              },
+                            }
+                          : msg,
+                      ),
+                    );
+                  }
+
+                  // Handle the "recommendation" event - contains the full report
+                  if (data.type === "recommendation" && data.metadata?.report) {
+                    const report = data.metadata.report;
+                    setReportData(report);
+
+                    // Update products
+                    if (report.rankedProducts) {
+                      setStreamProducts(report.rankedProducts);
+                      setMessages((prev) =>
+                        prev.map((msg) =>
+                          msg.id === aiMessageId
+                            ? {
+                                ...msg,
+                                streamProducts: report.rankedProducts,
+                                reportData: report,
+                              }
+                            : msg,
+                        ),
+                      );
+                    }
+                  }
+
+                  // Handle the "complete" event - finalize everything
+                  if (data.type === "complete") {
+                    // The report might be in data.metadata.report or at the top level
+                    const report = data.metadata?.report || data.report;
+
+                    if (report) {
+                      setReportData(report);
+                      setIsTyping(false);
+                      setIsStreaming(false);
+
+                      const newChatId = generateId();
+                      const userMessageContent =
+                        userMessage || "Looking for products";
+
+                      const newChat = {
+                        id: newChatId,
+                        title:
+                          userMessageContent.slice(0, 30) +
+                            (userMessageContent.length > 30 ? "..." : "") ||
+                          "Product Search",
+                        timestamp: new Date().toISOString(),
+                        messages: [
+                          {
+                            id: generateId(),
+                            type: "user",
+                            content:
+                              userMessageContent || "Looking for products",
+                            customFilters: [...customFilters],
+                            constantFilters: constantFilters || [],
+                          },
+                          {
+                            id: aiMessageId,
+                            type: "ai",
+                            content:
+                              report.executiveSummary || "Search complete",
+                            products: report.rankedProducts || [],
+                            streamProducts: report.rankedProducts || [],
+                            reportData: report,
+                            isStreaming: false,
+                            streamProgress: {
+                              progress: 100,
+                              message: "Complete",
+                            },
+                          },
+                        ],
+                        reportData: report,
+                      };
+
+                      const currentHistory = JSON.parse(
+                        localStorage.getItem("attrixia_chat_history") || "[]",
+                      );
+                      const updatedHistory = [newChat, ...currentHistory].slice(
+                        0,
+                        50,
+                      );
+                      setChatHistory(updatedHistory);
+                      localStorage.setItem(
+                        "attrixia_chat_history",
+                        JSON.stringify(updatedHistory),
+                      );
+
+                      setMessages((prev) =>
+                        prev.map((msg) =>
+                          msg.id === aiMessageId
+                            ? {
+                                ...msg,
+                                content:
+                                  report.executiveSummary || "Search complete",
+                                products: report.rankedProducts || [],
+                                streamProducts: report.rankedProducts || [],
+                                reportData: report,
+                                isStreaming: false,
+                                streamProgress: {
+                                  progress: 100,
+                                  message: "Complete",
+                                },
+                              }
+                            : msg,
+                        ),
+                      );
+
+                      setTimeout(() => {
+                        navigate(`/ai/${newChatId}`, { replace: true });
+                      }, 0);
+                    } else {
+                      // No report in complete event
+                      setIsTyping(false);
+                      setIsStreaming(false);
+                      setMessages((prev) =>
+                        prev.map((msg) =>
+                          msg.id === aiMessageId
+                            ? {
+                                ...msg,
+                                content:
+                                  "Search completed, but no results were found.",
+                                isStreaming: false,
+                              }
+                            : msg,
+                        ),
+                      );
+                    }
+                  }
+
+                  // Handle error events
+                  if (data.type === "error") {
+                    throw new Error(data.message || "Search error");
+                  }
+                } catch (e) {
+                  // Only log parse errors, not our thrown errors
+                  if (
+                    e.message !== "Search error" &&
+                    !e.message?.includes("Search failed")
+                  ) {
+                    console.warn(
+                      "[Stream] Parse warning:",
+                      e.message,
+                      "Line:",
+                      line.substring(0, 100),
+                    );
+                  } else {
+                    throw e;
+                  }
+                }
+              }
+            }
+          }
+        })
+        .catch((error) => {
+          if (error.name !== "AbortError") {
+            console.error("[Stream] Error:", error);
+            setIsTyping(false);
+            setIsStreaming(false);
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === aiMessageId
+                  ? {
+                      ...msg,
+                      content: `Sorry, something went wrong: ${error.message}. Please try again.`,
+                      isStreaming: false,
+                      error: true,
+                    }
+                  : msg,
+              ),
+            );
+          }
+        });
+
+      // Store abort controller for potential cancellation
+      window._activeStreamAbort = abortController;
+    } else {
+      // ============ SIMULATION (DEVELOPMENT) ============
+      aiService.simulateStream(userMessage, customFilters, userPreferences, {
         onProgress: (progressData) => {
           setStreamProgress(progressData);
-          setMessages(prev => prev.map(msg => 
-            msg.id === aiMessageId 
-              ? { ...msg, streamProgress: progressData }
-              : msg
-          ));
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === aiMessageId
+                ? { ...msg, streamProgress: progressData }
+                : msg,
+            ),
+          );
         },
-        
+
         onProductFound: (data) => {
-          // Extract the actual product from the wrapped object
           const actualProduct = data.product || data;
-          setStreamProducts(prev => [...prev, actualProduct]);
-          setMessages(prev => prev.map(msg => 
-            msg.id === aiMessageId 
-              ? { ...msg, streamProducts: [...(msg.streamProducts || []), actualProduct] }
-              : msg
-          ));
+          setStreamProducts((prev) => [...prev, actualProduct]);
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === aiMessageId
+                ? {
+                    ...msg,
+                    streamProducts: [
+                      ...(msg.streamProducts || []),
+                      actualProduct,
+                    ],
+                  }
+                : msg,
+            ),
+          );
         },
-        
+
         onReportUpdate: (reportUpdate) => {
-          setReportData(prev => ({ ...prev, ...reportUpdate }));
+          setReportData((prev) => ({ ...prev, ...reportUpdate }));
         },
-        
+
         onComplete: (completeData) => {
           const report = completeData.report;
           setReportData(report);
           setIsTyping(false);
           setIsStreaming(false);
-          
-          setMessages(prev => prev.map(msg => 
-            msg.id === aiMessageId 
-              ? {
-                  ...msg,
-                  content: report.executiveSummary,
-                  products: report.rankedProducts || [],
-                  reportData: report,
-                  isStreaming: false,
-                  streamProgress: { progress: 100, message: 'Complete' },
-                }
-              : msg
-          ));
-          
-          // Save to chat history
-          const newChatId = Date.now();
+
+          const newChatId = generateId();
+          const userMessageContent = userMessage || "Looking for products";
+
           const newChat = {
             id: newChatId,
-            title: userMessage.slice(0, 30) + (userMessage.length > 30 ? '...' : '') || 'Product Search',
+            title:
+              userMessageContent.slice(0, 30) +
+                (userMessageContent.length > 30 ? "..." : "") ||
+              "Product Search",
             timestamp: new Date().toISOString(),
-            messages: [...messages, newMessage],
+            messages: [
+              {
+                id: generateId(),
+                type: "user",
+                content: userMessageContent || "Looking for products",
+                customFilters: [...customFilters],
+                constantFilters: constantFilters || [],
+              },
+              {
+                id: aiMessageId,
+                type: "ai",
+                content: report.executiveSummary,
+                products: report.rankedProducts || [],
+                streamProducts: report.rankedProducts || [],
+                reportData: report,
+                isStreaming: false,
+                streamProgress: { progress: 100, message: "Complete" },
+              },
+            ],
             reportData: report,
           };
-          const updatedHistory = [newChat, ...chatHistory].slice(0, 50);
+
+          const currentHistory = JSON.parse(
+            localStorage.getItem("attrixia_chat_history") || "[]",
+          );
+          const updatedHistory = [newChat, ...currentHistory].slice(0, 50);
           setChatHistory(updatedHistory);
-          localStorage.setItem('attrixia_chat_history', JSON.stringify(updatedHistory));
-          
-          // Navigate to the new chat URL
-          navigate(`/ai/${newChatId}`, { replace: true });
+          localStorage.setItem(
+            "attrixia_chat_history",
+            JSON.stringify(updatedHistory),
+          );
+
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === aiMessageId
+                ? {
+                    ...msg,
+                    content: report.executiveSummary,
+                    products: report.rankedProducts || [],
+                    streamProducts: report.rankedProducts || [],
+                    reportData: report,
+                    isStreaming: false,
+                    streamProgress: { progress: 100, message: "Complete" },
+                  }
+                : msg,
+            ),
+          );
+
+          setTimeout(() => {
+            navigate(`/ai/${newChatId}`, { replace: true });
+          }, 0);
         },
-        
+
         onError: (errorMessage) => {
           setIsTyping(false);
           setIsStreaming(false);
-          setMessages(prev => prev.map(msg => 
-            msg.id === aiMessageId 
-              ? {
-                  ...msg,
-                  content: `Sorry, something went wrong: ${errorMessage}. Please try again.`,
-                  isStreaming: false,
-                  error: true,
-                }
-              : msg
-          ));
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === aiMessageId
+                ? {
+                    ...msg,
+                    content: `Sorry, something went wrong: ${errorMessage}. Please try again.`,
+                    isStreaming: false,
+                    error: true,
+                  }
+                : msg,
+            ),
+          );
         },
-      }
-    );
+      });
+    }
 
     // Clear filters after sending
     setCustomFilters([]);
   };
+
+  useEffect(() => {
+    return () => {
+      aiService.cancelActiveStream();
+    };
+  }, []);
 
   const loadChat = (chat) => {
     navigate(`/ai/${chat.id}`);
@@ -313,9 +772,14 @@ const AIPage = () => {
 
   const confirmDeleteChat = () => {
     if (chatToDelete) {
-      const updatedHistory = chatHistory.filter(chat => chat.id !== chatToDelete);
+      const updatedHistory = chatHistory.filter(
+        (chat) => chat.id !== chatToDelete,
+      );
       setChatHistory(updatedHistory);
-      localStorage.setItem('attrixia_chat_history', JSON.stringify(updatedHistory));
+      localStorage.setItem(
+        "attrixia_chat_history",
+        JSON.stringify(updatedHistory),
+      );
       if (messages.length > 0) {
         setMessages([]);
       }
@@ -335,7 +799,7 @@ const AIPage = () => {
     setIsSidebarOpen(false);
     setExpandedMessageId(null);
     setReportData(null);
-    navigate('/ai');
+    navigate("/ai");
   };
 
   const handleProductClick = (product) => {
@@ -343,21 +807,21 @@ const AIPage = () => {
   };
 
   // Calculate active preferences count
-  const activePreferencesCount = userPreferences ? 
-    (userPreferences.prioritizePrice ? 1 : 0) + 
-    (userPreferences.prioritizeQuality ? 1 : 0) + 
-    (userPreferences.budgetMin || userPreferences.budgetMax ? 1 : 0) 
+  const activePreferencesCount = userPreferences
+    ? (userPreferences.prioritizePrice ? 1 : 0) +
+      (userPreferences.prioritizeQuality ? 1 : 0) +
+      (userPreferences.budgetMin || userPreferences.budgetMax ? 1 : 0)
     : 0;
 
   return (
     <div className="relative h-screen flex bg-[#f5f5f5] overflow-hidden">
       {/* Grid Background */}
-      <AnimatedGridBackground/>
+      <AnimatedGridBackground />
 
       {/* Delete Confirmation Modal */}
       {deleteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div 
+          <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={cancelDeleteChat}
           />
@@ -366,9 +830,12 @@ const AIPage = () => {
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <FiTrash2 className="text-red-500 text-2xl" />
               </div>
-              <h3 className="text-xl font-bold text-[#1a1a1a] mb-2">Delete Chat</h3>
+              <h3 className="text-xl font-bold text-[#1a1a1a] mb-2">
+                Delete Chat
+              </h3>
               <p className="text-[#666666] mb-6">
-                Are you sure you want to delete this chat? This action cannot be undone.
+                Are you sure you want to delete this chat? This action cannot be
+                undone.
               </p>
               <div className="flex gap-3">
                 <button
@@ -392,25 +859,28 @@ const AIPage = () => {
       {/* Preferences Modal */}
       {isPreferencesModalOpen && (
         <div className="fixed inset-0 z-50">
-          <div 
+          <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-300"
             onClick={closePreferencesModal}
           />
-          
+
           {/* Mobile Drawer */}
-          <div className={`
+          <div
+            className={`
             md:hidden absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md rounded-t-3xl shadow-2xl border-t border-gray-200/50
             transition-all duration-300 ease-in-out transform
-            ${preferencesModalClosing 
-              ? 'translate-y-full' 
-              : 'translate-y-0'
-            }
-          `}>
+            ${preferencesModalClosing ? "translate-y-full" : "translate-y-0"}
+          `}
+          >
             <div className="p-6 pb-8">
               <div className="flex justify-between items-center mb-6">
                 <div>
-                  <h3 className="text-xl font-bold text-[#1a1a1a]">Search Preferences</h3>
-                  <p className="text-sm text-[#666666] mt-1">Customize your product recommendations</p>
+                  <h3 className="text-xl font-bold text-[#1a1a1a]">
+                    Search Preferences
+                  </h3>
+                  <p className="text-sm text-[#666666] mt-1">
+                    Customize your product recommendations
+                  </p>
                 </div>
                 <button
                   onClick={closePreferencesModal}
@@ -419,7 +889,7 @@ const AIPage = () => {
                   <FiX className="text-2xl" />
                 </button>
               </div>
-              
+
               <div className="space-y-6">
                 {/* Budget Range */}
                 <div>
@@ -428,31 +898,52 @@ const AIPage = () => {
                   </label>
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
-                      <label className="text-xs text-[#999999] mb-1 block">Min</label>
+                      <label className="text-xs text-[#999999] mb-1 block">
+                        Min
+                      </label>
                       <input
                         type="number"
-                        value={tempPreferences?.budgetMin || ''}
-                        onChange={(e) => setTempPreferences(prev => ({ ...prev, budgetMin: e.target.value }))}
+                        value={tempPreferences?.budgetMin || ""}
+                        onChange={(e) =>
+                          setTempPreferences((prev) => ({
+                            ...prev,
+                            budgetMin: e.target.value,
+                          }))
+                        }
                         className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#009FB8] focus:border-[#009FB8] transition text-sm"
                         placeholder="0"
                       />
                     </div>
                     <span className="text-[#999999] mt-5">-</span>
                     <div className="flex-1">
-                      <label className="text-xs text-[#999999] mb-1 block">Max</label>
+                      <label className="text-xs text-[#999999] mb-1 block">
+                        Max
+                      </label>
                       <input
                         type="number"
-                        value={tempPreferences?.budgetMax || ''}
-                        onChange={(e) => setTempPreferences(prev => ({ ...prev, budgetMax: e.target.value }))}
+                        value={tempPreferences?.budgetMax || ""}
+                        onChange={(e) =>
+                          setTempPreferences((prev) => ({
+                            ...prev,
+                            budgetMax: e.target.value,
+                          }))
+                        }
                         className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#009FB8] focus:border-[#009FB8] transition text-sm"
                         placeholder="10000"
                       />
                     </div>
                     <div className="flex-1">
-                      <label className="text-xs text-[#999999] mb-1 block">Currency</label>
+                      <label className="text-xs text-[#999999] mb-1 block">
+                        Currency
+                      </label>
                       <select
-                        value={tempPreferences?.preferredCurrency || 'NGN'}
-                        onChange={(e) => setTempPreferences(prev => ({ ...prev, preferredCurrency: e.target.value }))}
+                        value={tempPreferences?.preferredCurrency || "NGN"}
+                        onChange={(e) =>
+                          setTempPreferences((prev) => ({
+                            ...prev,
+                            preferredCurrency: e.target.value,
+                          }))
+                        }
                         className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#009FB8] focus:border-[#009FB8] transition text-sm bg-white"
                       >
                         <option value="NGN">NGN</option>
@@ -469,70 +960,94 @@ const AIPage = () => {
                   <label className="block text-sm font-medium text-[#333333]">
                     Prioritization
                   </label>
-                  
-                  {/* Prioritize Price Toggle */}
+
+                  {/* Prioritize Shipping Toggle */}
                   <button
-                    onClick={() => setTempPreferences(prev => ({ 
-                      ...prev, 
-                      prioritizePrice: !prev.prioritizePrice,
-                      // If turning on price, turn off quality if it was on
-                      prioritizeQuality: !prev.prioritizePrice ? prev.prioritizeQuality : false
-                    }))}
+                    onClick={() =>
+                      setTempPreferences((prev) => ({
+                        ...prev,
+                        prioritizeShipping: !prev.prioritizeShipping,
+                      }))
+                    }
                     className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
-                      tempPreferences?.prioritizePrice 
-                        ? 'bg-emerald-50 border-emerald-300 shadow-sm' 
-                        : 'bg-white border-gray-200 hover:border-gray-300'
+                      tempPreferences?.prioritizeShipping
+                        ? "bg-blue-50 border-blue-300 shadow-md"
+                        : "bg-white border-gray-200 hover:border-gray-300"
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        tempPreferences?.prioritizePrice ? 'bg-emerald-100' : 'bg-gray-100'
-                      }`}>
-                        <FiDollarSign className={`text-lg ${
-                          tempPreferences?.prioritizePrice ? 'text-emerald-600' : 'text-gray-400'
-                        }`} />
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                          tempPreferences?.prioritizeShipping
+                            ? "bg-blue-100"
+                            : "bg-gray-100"
+                        }`}
+                      >
+                        <FiTruck
+                          className={`text-lg ${
+                            tempPreferences?.prioritizeShipping
+                              ? "text-blue-600"
+                              : "text-gray-400"
+                          }`}
+                        />
                       </div>
                       <div className="text-left">
-                        <p className="font-medium text-[#1a1a1a] text-sm">Best Price</p>
-                        <p className="text-xs text-[#666666]">Find the most affordable options</p>
+                        <p className="font-medium text-[#1a1a1a] text-sm">
+                          Fast Shipping
+                        </p>
+                        <p className="text-xs text-[#666666]">
+                          Prioritize quick delivery
+                        </p>
                       </div>
                     </div>
-                    {tempPreferences?.prioritizePrice ? (
-                      <IoToggle className="text-3xl text-emerald-500" />
+                    {tempPreferences?.prioritizeShipping ? (
+                      <IoToggle className="text-3xl text-blue-500" />
                     ) : (
                       <IoToggle className="text-3xl text-gray-300 rotate-180" />
                     )}
                   </button>
 
-                  {/* Prioritize Quality Toggle */}
+                  {/* Prioritize Seller Toggle */}
                   <button
-                    onClick={() => setTempPreferences(prev => ({ 
-                      ...prev, 
-                      prioritizeQuality: !prev.prioritizeQuality,
-                      // If turning on quality, turn off price if it was on
-                      prioritizePrice: !prev.prioritizeQuality ? prev.prioritizePrice : false
-                    }))}
+                    onClick={() =>
+                      setTempPreferences((prev) => ({
+                        ...prev,
+                        prioritizeSeller: !prev.prioritizeSeller,
+                      }))
+                    }
                     className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
-                      tempPreferences?.prioritizeQuality 
-                        ? 'bg-yellow-50 border-yellow-300 shadow-md' 
-                        : 'bg-white border-gray-200 hover:border-gray-300'
+                      tempPreferences?.prioritizeSeller
+                        ? "bg-purple-50 border-purple-300 shadow-md"
+                        : "bg-white border-gray-200 hover:border-gray-300"
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        tempPreferences?.prioritizeQuality ? 'bg-yellow-100' : 'bg-gray-100'
-                      }`}>
-                        <FiStar className={`text-lg ${
-                          tempPreferences?.prioritizeQuality ? 'text-yellow-600' : 'text-gray-400'
-                        }`} />
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                          tempPreferences?.prioritizeSeller
+                            ? "bg-purple-100"
+                            : "bg-gray-100"
+                        }`}
+                      >
+                        <FiShield
+                          className={`text-lg ${
+                            tempPreferences?.prioritizeSeller
+                              ? "text-purple-600"
+                              : "text-gray-400"
+                          }`}
+                        />
                       </div>
                       <div className="text-left">
-                        <p className="font-medium text-[#1a1a1a] text-sm">Best Quality</p>
-                        <p className="text-xs text-[#666666]">Find the highest rated products</p>
+                        <p className="font-medium text-[#1a1a1a] text-sm">
+                          Trusted Seller
+                        </p>
+                        <p className="text-xs text-[#666666]">
+                          Prioritize seller reputation
+                        </p>
                       </div>
                     </div>
-                    {tempPreferences?.prioritizeQuality ? (
-                      <IoToggle className="text-3xl text-yellow-500" />
+                    {tempPreferences?.prioritizeSeller ? (
+                      <IoToggle className="text-3xl text-purple-500" />
                     ) : (
                       <IoToggle className="text-3xl text-gray-300 rotate-180" />
                     )}
@@ -562,8 +1077,12 @@ const AIPage = () => {
             <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl max-w-lg w-full p-8 border border-gray-200/50">
               <div className="flex justify-between items-center mb-6">
                 <div>
-                  <h3 className="text-xl font-bold text-[#1a1a1a]">Search Preferences</h3>
-                  <p className="text-sm text-[#666666] mt-1">Customize your product recommendations</p>
+                  <h3 className="text-xl font-bold text-[#1a1a1a]">
+                    Search Preferences
+                  </h3>
+                  <p className="text-sm text-[#666666] mt-1">
+                    Customize your product recommendations
+                  </p>
                 </div>
                 <button
                   onClick={closePreferencesModal}
@@ -572,7 +1091,7 @@ const AIPage = () => {
                   <FiX className="text-2xl" />
                 </button>
               </div>
-              
+
               <div className="space-y-6">
                 {/* Budget Range */}
                 <div>
@@ -581,31 +1100,52 @@ const AIPage = () => {
                   </label>
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
-                      <label className="text-xs text-[#999999] mb-1 block">Min</label>
+                      <label className="text-xs text-[#999999] mb-1 block">
+                        Min
+                      </label>
                       <input
                         type="number"
-                        value={tempPreferences?.budgetMin || ''}
-                        onChange={(e) => setTempPreferences(prev => ({ ...prev, budgetMin: e.target.value }))}
+                        value={tempPreferences?.budgetMin || ""}
+                        onChange={(e) =>
+                          setTempPreferences((prev) => ({
+                            ...prev,
+                            budgetMin: e.target.value,
+                          }))
+                        }
                         className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#009FB8] focus:border-[#009FB8] transition text-sm"
                         placeholder="0"
                       />
                     </div>
                     <span className="text-[#999999] mt-5">-</span>
                     <div className="flex-1">
-                      <label className="text-xs text-[#999999] mb-1 block">Max</label>
+                      <label className="text-xs text-[#999999] mb-1 block">
+                        Max
+                      </label>
                       <input
                         type="number"
-                        value={tempPreferences?.budgetMax || ''}
-                        onChange={(e) => setTempPreferences(prev => ({ ...prev, budgetMax: e.target.value }))}
+                        value={tempPreferences?.budgetMax || ""}
+                        onChange={(e) =>
+                          setTempPreferences((prev) => ({
+                            ...prev,
+                            budgetMax: e.target.value,
+                          }))
+                        }
                         className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#009FB8] focus:border-[#009FB8] transition text-sm"
                         placeholder="10000"
                       />
                     </div>
                     <div className="w-24">
-                      <label className="text-xs text-[#999999] mb-1 block">Currency</label>
+                      <label className="text-xs text-[#999999] mb-1 block">
+                        Currency
+                      </label>
                       <select
-                        value={tempPreferences?.preferredCurrency || 'NGN'}
-                        onChange={(e) => setTempPreferences(prev => ({ ...prev, preferredCurrency: e.target.value }))}
+                        value={tempPreferences?.preferredCurrency || "NGN"}
+                        onChange={(e) =>
+                          setTempPreferences((prev) => ({
+                            ...prev,
+                            preferredCurrency: e.target.value,
+                          }))
+                        }
                         className="w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#009FB8] focus:border-[#009FB8] transition text-sm bg-white"
                       >
                         <option value="NGN">NGN</option>
@@ -622,68 +1162,94 @@ const AIPage = () => {
                   <label className="block text-sm font-medium text-[#333333]">
                     Prioritization
                   </label>
-                  
-                  {/* Prioritize Price Toggle */}
+
+                  {/* Prioritize Shipping Toggle */}
                   <button
-                    onClick={() => setTempPreferences(prev => ({ 
-                      ...prev, 
-                      prioritizePrice: !prev.prioritizePrice,
-                      prioritizeQuality: !prev.prioritizePrice ? prev.prioritizeQuality : false
-                    }))}
+                    onClick={() =>
+                      setTempPreferences((prev) => ({
+                        ...prev,
+                        prioritizeShipping: !prev.prioritizeShipping,
+                      }))
+                    }
                     className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
-                      tempPreferences?.prioritizePrice 
-                        ? 'bg-emerald-50 border-emerald-300 shadow-md' 
-                        : 'bg-white border-gray-200 hover:border-gray-300'
+                      tempPreferences?.prioritizeShipping
+                        ? "bg-blue-50 border-blue-300 shadow-md"
+                        : "bg-white border-gray-200 hover:border-gray-300"
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        tempPreferences?.prioritizePrice ? 'bg-emerald-100' : 'bg-gray-100'
-                      }`}>
-                        <FiDollarSign className={`text-lg ${
-                          tempPreferences?.prioritizePrice ? 'text-emerald-600' : 'text-gray-400'
-                        }`} />
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                          tempPreferences?.prioritizeShipping
+                            ? "bg-blue-100"
+                            : "bg-gray-100"
+                        }`}
+                      >
+                        <FiTruck
+                          className={`text-lg ${
+                            tempPreferences?.prioritizeShipping
+                              ? "text-blue-600"
+                              : "text-gray-400"
+                          }`}
+                        />
                       </div>
                       <div className="text-left">
-                        <p className="font-medium text-[#1a1a1a] text-sm">Best Price</p>
-                        <p className="text-xs text-[#666666]">Find the most affordable options</p>
+                        <p className="font-medium text-[#1a1a1a] text-sm">
+                          Fast Shipping
+                        </p>
+                        <p className="text-xs text-[#666666]">
+                          Prioritize quick delivery
+                        </p>
                       </div>
                     </div>
-                    {tempPreferences?.prioritizePrice ? (
-                      <IoToggle className="text-3xl text-emerald-500" />
+                    {tempPreferences?.prioritizeShipping ? (
+                      <IoToggle className="text-3xl text-blue-500" />
                     ) : (
                       <IoToggle className="text-3xl text-gray-300 rotate-180" />
                     )}
                   </button>
 
-                  {/* Prioritize Quality Toggle */}
+                  {/* Prioritize Seller Toggle */}
                   <button
-                    onClick={() => setTempPreferences(prev => ({ 
-                      ...prev, 
-                      prioritizeQuality: !prev.prioritizeQuality,
-                      prioritizePrice: !prev.prioritizeQuality ? prev.prioritizePrice : false
-                    }))}
+                    onClick={() =>
+                      setTempPreferences((prev) => ({
+                        ...prev,
+                        prioritizeSeller: !prev.prioritizeSeller,
+                      }))
+                    }
                     className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
-                      tempPreferences?.prioritizeQuality 
-                        ? 'bg-yellow-50 border-yellow-300 shadow-md' 
-                        : 'bg-white border-gray-200 hover:border-gray-300'
+                      tempPreferences?.prioritizeSeller
+                        ? "bg-purple-50 border-purple-300 shadow-md"
+                        : "bg-white border-gray-200 hover:border-gray-300"
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        tempPreferences?.prioritizeQuality ? 'bg-yellow-100' : 'bg-gray-100'
-                      }`}>
-                        <FiStar className={`text-lg ${
-                          tempPreferences?.prioritizeQuality ? 'text-yellow-600' : 'text-gray-400'
-                        }`} />
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                          tempPreferences?.prioritizeSeller
+                            ? "bg-purple-100"
+                            : "bg-gray-100"
+                        }`}
+                      >
+                        <FiShield
+                          className={`text-lg ${
+                            tempPreferences?.prioritizeSeller
+                              ? "text-purple-600"
+                              : "text-gray-400"
+                          }`}
+                        />
                       </div>
                       <div className="text-left">
-                        <p className="font-medium text-[#1a1a1a] text-sm">Best Quality</p>
-                        <p className="text-xs text-[#666666]">Find the highest rated products</p>
+                        <p className="font-medium text-[#1a1a1a] text-sm">
+                          Trusted Seller
+                        </p>
+                        <p className="text-xs text-[#666666]">
+                          Prioritize seller reputation
+                        </p>
                       </div>
                     </div>
-                    {tempPreferences?.prioritizeQuality ? (
-                      <IoToggle className="text-3xl text-yellow-500" />
+                    {tempPreferences?.prioritizeSeller ? (
+                      <IoToggle className="text-3xl text-purple-500" />
                     ) : (
                       <IoToggle className="text-3xl text-gray-300 rotate-180" />
                     )}
@@ -712,38 +1278,44 @@ const AIPage = () => {
 
       {/* Overlay for mobile */}
       {isSidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-30 bg-black/30 backdrop-blur-xs md:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
       {/* Sidebar */}
-      <div 
+      <div
         ref={sidebarRef}
         className={`
           fixed inset-y-0 left-0 z-40 w-72 bg-white/90 backdrop-blur- shadow-2xl transform transition-all duration-300 ease-in-out border-r border-gray-200/50
-          ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}
           md:translate-x-0 md:relative md:shadow-sm
-          ${isSidebarCollapsed ? 'md:w-0 md:border-r-0 md:overflow-hidden md:-translate-x-full' : 'md:w-72'}
+          ${isSidebarCollapsed ? "md:w-0 md:border-r-0 md:overflow-hidden md:-translate-x-full" : "md:w-72"}
         `}
       >
         <div className="flex flex-col h-full w-72">
           {/* Brand */}
           <div className="p-5 flex items-center justify-between">
             <Link to="/" className="flex items-center gap-">
-                <img src="/logo.png" alt="" className='w-10 mb-1.5 h-10 bg-gray-90'/>
+              <img
+                src="/logo.png"
+                alt=""
+                className="w-10 mb-1.5 h-10 bg-gray-90"
+              />
 
-              <span className="text-2xl font-bold text-[#1a1a1a]">
-                ttrixia
-              </span>
+              <span className="text-2xl font-bold text-[#1a1a1a]">ttrixia</span>
             </Link>
             <button
               onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
               className="hidden md:flex items-center justify-center text-[#666666] hover:text-[#009FB8] hover:bg-white/50 transition p-2.5 rounded-lg border border-gray-200/50"
-              title={isSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+              title={isSidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
             >
-              {isSidebarCollapsed ? <PiSidebarSimpleLight className="text-lg" /> : <PiSidebarSimpleLight className="text-lg" />}
+              {isSidebarCollapsed ? (
+                <PiSidebarSimpleLight className="text-lg" />
+              ) : (
+                <PiSidebarSimpleLight className="text-lg" />
+              )}
             </button>
           </div>
 
@@ -751,7 +1323,7 @@ const AIPage = () => {
           <div className="px-4 pt-4 space-y-1 ">
             <button
               onClick={startNewChat}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#009FB8]/15 text-[#009FB8] font-medium hover:bg-[#009FB8]/25 transition border border-[#009FB8]/20"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#004752]/10 text-[#009FB8] font-medium hover:bg-[#009FB8]/25 transition border border-[#009FB8]/20"
             >
               <FiPlus className="text-lg shrink-0" />
               New Chat
@@ -761,7 +1333,7 @@ const AIPage = () => {
               className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#666666] hover:bg-gray-50 transition"
             >
               {/* <FiHeart className="text-lg shrink-0" /> */}
-              <FaRegBookmark  className="text-lg shrink-0" />
+              <FaRegBookmark className="text-lg shrink-0" />
               Wishlist
             </Link>
             <Link
@@ -787,15 +1359,17 @@ const AIPage = () => {
                     key={chat.id}
                     onClick={() => loadChat(chat)}
                     className={`group flex items-center justify-between p-2 hover:bg-white/60 rounded-xl cursor-pointer transition border ${
-                      String(chat.id) === chatId 
-                        ? 'bg-white/80 border-transparent shadow-xs' 
-                        : 'border-transparent hover:border-gray-200/50'
+                      String(chat.id) === chatId
+                        ? "bg-white/80 border-transparent shadow-xs"
+                        : "border-transparent hover:border-gray-200/50"
                     }`}
                   >
                     <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                      <span className={`text-sm truncate capitalize text-[#333333] ${
-                        String(chat.id) === chatId ? 'font-medium' : ''
-                      }`}>
+                      <span
+                        className={`text-sm truncate capitalize text-[#333333] ${
+                          String(chat.id) === chatId ? "font-medium" : ""
+                        }`}
+                      >
                         {chat.title}
                       </span>
                     </div>
@@ -815,14 +1389,19 @@ const AIPage = () => {
           <div className="p-4 border-t border-gray-200/50 bg-white/30">
             <div className="flex items-center gap-3 px-3  rounded-xl">
               <div className="w-9 h-9 rounded-full bg-linear-to-br from-[#009FB8] to-[#006b7d] flex items-center justify-center text-white font-semibold text-sm shrink-0">
-                {user?.name?.[0]?.toUpperCase() || 'U'}
+                {user?.name?.[0]?.toUpperCase() || "U"}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-[#1a1a1a] truncate">{user?.name || 'User'}</p>
+                <p className="text-xs font-medium text-[#1a1a1a] truncate">
+                  {user?.name || "User"}
+                </p>
                 <p className="text-xs text-[#999999] truncate">{user?.email}</p>
               </div>
               <button
-                onClick={() => { logout(); navigate('/'); }}
+                onClick={() => {
+                  logout();
+                  navigate("/");
+                }}
                 className="text-[#999999] hover:text-red-500 transition shrink-0"
               >
                 <FiLogOut className="text-sm" />
@@ -837,22 +1416,31 @@ const AIPage = () => {
         {/* Header */}
         <div className="bg-linear-to-b from-white/50 via-white/30 to-[#0000] p-4 flex items-center gap-3 justify-between">
           <div className="flex items-center gap-3">
-            
             {/* Desktop Sidebar Toggle */}
-            <img onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} src="/logo.png" alt="" className={`w-10 h-10 mb-1.5 hidden md:block bg-gray-90 ${!isSidebarCollapsed ? 'md:hidden' : ''}`} />
-            <div className={`flex items-center bg-white/70 rounded-full px-3  ${!isSidebarCollapsed ? 'hidden' : ''}`}>
+            <img
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              src="/logo.png"
+              alt=""
+              className={`w-10 h-10 mb-1.5 hidden md:block bg-gray-90 ${!isSidebarCollapsed ? "md:hidden" : ""}`}
+            />
+            <div
+              className={`flex items-center bg-white/70 rounded-full px-3  ${!isSidebarCollapsed ? "hidden" : ""}`}
+            >
               <button
                 onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                className={`hidden md:flex items-center justify-center hover:text-[#666666] text-[#009FB8] cursor-pointer transition p-2.5 rounded-lg${!isSidebarCollapsed ? 'md:hidden' : ''}`}
-                title={isSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+                className={`hidden md:flex items-center justify-center hover:text-[#666666] text-[#009FB8] cursor-pointer transition p-2.5 rounded-lg${!isSidebarCollapsed ? "md:hidden" : ""}`}
+                title={isSidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
               >
                 {/* <PiSidebarSimpleLight className='text-xl'/> */}
-                <FiSidebar className='text-xl'/>
+                <FiSidebar className="text-xl" />
               </button>
-              <Link to="/wishlist" className='p-3'>
+              <Link to="/wishlist" className="p-3">
                 {/* <FiHeart className="text-lg text-[#009FB8]" /> */}
                 <FaRegBookmark className="text-lg text-[#009FB8]" />
               </Link>
+              <button onClick={startNewChat} className="p-2">
+                <BiMessageSquareAdd className="text-xl text-[#009FB8]" />
+              </button>
             </div>
 
             {/* Mobile Menu Button */}
@@ -862,7 +1450,6 @@ const AIPage = () => {
             >
               <FiMenu className="text-2xl" />
             </button>
-            
           </div>
 
           {/* Preferences Button - Right side of header */}
@@ -871,7 +1458,9 @@ const AIPage = () => {
             className="flex items-center gap-2 bg-white/70 hover:bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full border border-gray-200/70 shadow-sm hover:shadow-md transition-all group"
           >
             <FiSettings className="text-[#009FB8] group-hover:rotate-90 transition-transform duration-300" />
-            <span className="text-sm font-medium text-[#333333] hidden sm:inline">Preferences</span>
+            <span className="text-sm font-medium text-[#333333] hidden sm:inline">
+              Preferences
+            </span>
             {/* {activePreferencesCount > 0 && (
               <span className="bg-[#009FB8] text-white text-xs px-2 py-0.5 rounded-full font-medium">
                 {activePreferencesCount}
@@ -881,22 +1470,27 @@ const AIPage = () => {
         </div>
 
         {/* Messages */}
-        <div 
+        <div
           ref={messagesContainerRef}
           className="flex-1 overflow-y-auto neat-scrollbar"
         >
           <div className="max-w-3xl mx-auto p-4 space-y-4">
             {messages.length === 0 ? (
               <div className="h-full flex flex-col items-center pb-40 justify-center text-center px-4 min-h-[60vh]">
-                <div className={`w-40 h-40 flex items-center justify-center ${customFilters.length > 0 ? "mb-20" : ""}`}>
+                <div
+                  className={`w-40 h-40 flex items-center justify-center ${customFilters.length > 0 ? "mb-20" : ""}`}
+                >
                   <img src="/logo.png" alt="" />
                 </div>
-                <div className={`${customFilters.length > 0 ? "hidden" : "block"}`}>
+                <div
+                  className={`${customFilters.length > 0 ? "hidden" : "block"}`}
+                >
                   <h2 className="text-2xl font-bold text-[#1a1a1a] mb-2">
                     Welcome to Attrixia
                   </h2>
                   <p className="text-[#666666] max-w-md">
-                    Add filters or type your requirements to get personalized product recommendations
+                    Add filters or type your requirements to get personalized
+                    product recommendations
                   </p>
                 </div>
               </div>
@@ -904,13 +1498,18 @@ const AIPage = () => {
               <>
                 {messages.map((msg) => (
                   <div key={msg.id}>
-                    {msg.type === 'user' ? (
+                    {msg.type === "user" ? (
                       <div className="flex justify-end">
                         <div className="bg-linear-to-br from-[#1a1a1a] to-[#333333] text-white rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[80%] shadow-md border border-[#1a1a1a]/30">
-                          <p className="text-sm leading-relaxed">{msg.content}</p>
-                          
+                          <p className="text-sm leading-relaxed">
+                            {msg.content}
+                          </p>
+
                           {/* Show filters dropdown only if there are filters */}
-                          {((msg.customFilters && msg.customFilters.length > 0) || (msg.constantFilters && msg.constantFilters.length > 0)) && (
+                          {((msg.customFilters &&
+                            msg.customFilters.length > 0) ||
+                            (msg.constantFilters &&
+                              msg.constantFilters.length > 0)) && (
                             <div className="mt-2 pt-2 border-t border-white/20">
                               <button
                                 onClick={() => toggleMessageExpansion(msg.id)}
@@ -918,52 +1517,72 @@ const AIPage = () => {
                               >
                                 <FiFilter className="text-xs" />
                                 <span>
-                                  {(msg.customFilters?.length || 0) + (msg.constantFilters?.length || 0)} filters applied
+                                  {(msg.customFilters?.length || 0) +
+                                    (msg.constantFilters?.length || 0)}{" "}
+                                  filters applied
                                 </span>
-                                <FiChevronDown 
+                                <FiChevronDown
                                   className={`ml-auto transition-transform duration-300 ${
-                                    expandedMessageId === msg.id ? 'rotate-180' : ''
+                                    expandedMessageId === msg.id
+                                      ? "rotate-180"
+                                      : ""
                                   }`}
                                 />
                               </button>
-                              
+
                               {/* Animated expandable filters section */}
-                              <div 
+                              <div
                                 className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                                  expandedMessageId === msg.id 
-                                    ? 'max-h-96 opacity-100 mt-2' 
-                                    : 'max-h-0 opacity-0'
+                                  expandedMessageId === msg.id
+                                    ? "max-h-96 opacity-100 mt-2"
+                                    : "max-h-0 opacity-0"
                                 }`}
                               >
                                 <div className="space-y-1.5">
                                   {/* Custom Filters */}
                                   {msg.customFilters?.map((filter, idx) => (
-                                    <div 
-                                      key={`custom-${idx}`} 
+                                    <div
+                                      key={`custom-${idx}`}
                                       className="flex items-center gap-1.5 text-xs bg-white/10 rounded-full px-2 py-1 transform transition-all duration-200"
-                                      style={{ transitionDelay: `${idx * 50}ms` }}
+                                      style={{
+                                        transitionDelay: `${idx * 50}ms`,
+                                      }}
                                     >
-                                      <span className="font-medium">{filter.name}:</span>
-                                      <span className="text-white/80">{filter.value}</span>
-                                      <span className="text-[10px] text-white/50 ml-1 bg-white/20 px-1.5 py-0.5 rounded-full">Custom</span>
+                                      <span className="font-medium">
+                                        {filter.name}:
+                                      </span>
+                                      <span className="text-white/80">
+                                        {filter.value}
+                                      </span>
+                                      <span className="text-[10px] text-white/50 ml-1 bg-white/20 px-1.5 py-0.5 rounded-full">
+                                        Custom
+                                      </span>
                                     </div>
                                   ))}
-                                  
+
                                   {/* Constant Preferences Filters */}
                                   {msg.constantFilters?.map((filter, idx) => (
-                                    <div 
-                                      key={`constant-${idx}`} 
+                                    <div
+                                      key={`constant-${idx}`}
                                       className="flex items-center gap-1.5 text-xs bg-white/10 rounded-full px-2 py-1 transform transition-all duration-200"
-                                      style={{ transitionDelay: `${(msg.customFilters?.length || 0) * 50 + idx * 50}ms` }}
+                                      style={{
+                                        transitionDelay: `${(msg.customFilters?.length || 0) * 50 + idx * 50}ms`,
+                                      }}
                                     >
-                                      {filter.name === 'Budget Range' ? (
+                                      {filter.name === "Budget Range" ? (
                                         <FiDollarSign className="text-[10px] text-emerald-300" />
                                       ) : (
                                         <FiStar className="text-[10px] text-yellow-300" />
                                       )}
-                                      <span className="font-medium">{filter.name}:</span>
-                                      <span className="text-white/80">{filter.value}</span>
-                                      <span className="text-[10px] text-emerald-300 ml-1 bg-emerald-500/20 px-1.5 py-0.5 rounded-full">Preference</span>
+                                      <span className="font-medium">
+                                        {filter.name}:
+                                      </span>
+                                      <span className="text-white/80">
+                                        {filter.value}
+                                      </span>
+                                      <span className="text-[10px] text-emerald-300 ml-1 bg-emerald-500/20 px-1.5 py-0.5 rounded-full">
+                                        Preference
+                                      </span>
                                     </div>
                                   ))}
                                 </div>
@@ -982,14 +1601,18 @@ const AIPage = () => {
                         {/* Main AI Message Content */}
                         {msg.content && !msg.isStreaming && (
                           <div className="bg-white/80 backdrop-blur-md rounded-2xl rounded-tl-sm px-4 py-3 shadow-md border border-gray-200/50">
-                            <p className="text-sm text-[#333333] leading-relaxed">{msg.content}</p>
+                            <p className="text-sm text-[#333333] leading-relaxed">
+                              {msg.content}
+                            </p>
                           </div>
                         )}
 
                         {/* Error State */}
                         {msg.error && (
                           <div className="bg-red-50/80 backdrop-blur-md rounded-2xl rounded-tl-sm px-4 py-3 shadow-md border border-red-200/50">
-                            <p className="text-sm text-red-600 leading-relaxed">{msg.content}</p>
+                            <p className="text-sm text-red-600 leading-relaxed">
+                              {msg.content}
+                            </p>
                           </div>
                         )}
 
@@ -999,44 +1622,69 @@ const AIPage = () => {
                         )}
 
                         {/* Products Grid */}
-                        {(msg.streamProducts?.length > 0 || msg.products?.length > 0) && (
+                        {(msg.streamProducts?.length > 0 ||
+                          msg.products?.length > 0) && (
                           <div className="mt-2">
                             {/* Streaming label */}
                             {msg.isStreaming && (
                               <div className="flex items-center gap-2 mb-3">
                                 <div className="flex gap-1">
-                                  <span className="w-1.5 h-1.5 bg-[#009FB8] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                                  <span className="w-1.5 h-1.5 bg-[#009FB8] rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
-                                  <span className="w-1.5 h-1.5 bg-[#009FB8] rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
+                                  <span
+                                    className="w-1.5 h-1.5 bg-[#009FB8] rounded-full animate-bounce"
+                                    style={{ animationDelay: "0ms" }}
+                                  />
+                                  <span
+                                    className="w-1.5 h-1.5 bg-[#009FB8] rounded-full animate-bounce"
+                                    style={{ animationDelay: "200ms" }}
+                                  />
+                                  <span
+                                    className="w-1.5 h-1.5 bg-[#009FB8] rounded-full animate-bounce"
+                                    style={{ animationDelay: "400ms" }}
+                                  />
                                 </div>
                                 <span className="text-xs text-[#009FB8] font-medium">
-                                  Finding products... ({(msg.streamProducts || msg.products).length} found)
+                                  Finding products... (
+                                  {(msg.streamProducts || msg.products).length}{" "}
+                                  found)
                                 </span>
                               </div>
                             )}
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {(msg.streamProducts || msg.products).map((product) => (
-                                <ProductCard 
-                                  key={product.id} 
-                                  product={product} 
-                                  isStreaming={msg.isStreaming}
-                                />
-                              ))}
+                              {(msg.streamProducts || msg.products).map(
+                                (product) => (
+                                  <ProductCard
+                                    key={product.id}
+                                    product={product}
+                                    isStreaming={msg.isStreaming}
+                                  />
+                                ),
+                              )}
                             </div>
                           </div>
                         )}
 
                         {/* Typing indicator when no products yet */}
-                        {msg.isStreaming && !msg.streamProducts?.length && !msg.streamProgress && (
-                          <div className="bg-white/80 backdrop-blur-md rounded-2xl rounded-tl-sm px-4 py-3 shadow-md border border-gray-200/50">
-                            <div className="flex gap-1">
-                              <span className="w-2 h-2 bg-[#009FB8] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                              <span className="w-2 h-2 bg-[#009FB8] rounded-full animate-bounce" style={{ animationDelay: '200ms' }} />
-                              <span className="w-2 h-2 bg-[#009FB8] rounded-full animate-bounce" style={{ animationDelay: '400ms' }} />
+                        {msg.isStreaming &&
+                          !msg.streamProducts?.length &&
+                          !msg.streamProgress && (
+                            <div className="bg-white/80 backdrop-blur-md rounded-2xl rounded-tl-sm px-4 py-3 shadow-md border border-gray-200/50">
+                              <div className="flex gap-1">
+                                <span
+                                  className="w-2 h-2 bg-[#009FB8] rounded-full animate-bounce"
+                                  style={{ animationDelay: "0ms" }}
+                                />
+                                <span
+                                  className="w-2 h-2 bg-[#009FB8] rounded-full animate-bounce"
+                                  style={{ animationDelay: "200ms" }}
+                                />
+                                <span
+                                  className="w-2 h-2 bg-[#009FB8] rounded-full animate-bounce"
+                                  style={{ animationDelay: "400ms" }}
+                                />
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
                       </div>
                     )}
                   </div>
@@ -1049,10 +1697,12 @@ const AIPage = () => {
 
         {/* Input Container with Filters - Only show when no messages */}
         {messages.length === 0 && (
-          <div className={`
+          <div
+            className={`
             transition-all duration-500 ease-in-out mx-5 md:mx-10
             md:absolute md:inset-x-0 md:bottom-[25%] md:flex md:justify-center md:px-4
-          `}>
+          `}
+          >
             <div className="md:w-full md:max-w-4xl">
               {/* Filter Chips */}
               {customFilters.length > 0 && (
@@ -1063,7 +1713,9 @@ const AIPage = () => {
                         key={index}
                         className="bg-white/80 backdrop-blur-sm text-[#1a1a1a] px-3 py-1.5 rounded-full text-sm flex items-center gap-2 border border-gray-200/70 shadow-sm hover:shadow-md hover:border-[#009FB8]/30 transition-all group"
                       >
-                        <span className="font-medium text-[#333333]">{filter.name}:</span>
+                        <span className="font-medium text-[#333333]">
+                          {filter.name}:
+                        </span>
                         <span className="text-[#666666]">{filter.value}</span>
                         <button
                           onClick={() => removeFilter(index)}
@@ -1076,7 +1728,7 @@ const AIPage = () => {
                   </div>
                 </div>
               )}
-              
+
               {/* Input Field */}
               <div className="pb-4">
                 <div className="relative flex items-center bg-white/50 backdrop-blur-sm rounded-2xl border-2 border-gray-200/70 focus-within:border-[#009FB8]/50 focus-within:ring-2 focus-within:ring-[#009FB8]/20 focus-within:shadow-lg transition">
@@ -1090,16 +1742,16 @@ const AIPage = () => {
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                    onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
                     placeholder="Ask Attrixia Agent (e.g., Find me a gaming laptop)"
                     className="w-full pl-12 pr-12 py-3.5 bg-transparent focus:outline-none text-[#333333] placeholder-[#999999]"
                   />
                   <button
                     onClick={handleSendMessage}
                     className={`absolute right-3 transition p-2 rounded-full ${
-                      input.trim() || customFilters.length > 0 
-                        ? 'text-[#009FB8] cursor-pointer hover:text-[#006b7d] bg-[#009FB8]/10' 
-                        : 'text-[#949494] cursor-not-allowed bg-[#dad8d862]'
+                      input.trim() || customFilters.length > 0
+                        ? "text-[#009FB8] cursor-pointer hover:text-[#006b7d] bg-[#009FB8]/10"
+                        : "text-[#949494] cursor-not-allowed bg-[#dad8d862]"
                     }`}
                     disabled={!input.trim() && customFilters.length === 0}
                   >
@@ -1115,23 +1767,24 @@ const AIPage = () => {
       {/* Filter Drawer/Modal */}
       {isDrawerOpen && (
         <div className="fixed inset-0 z-50">
-          <div 
+          <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-300"
             onClick={closeDrawer}
           />
-          
+
           {/* Mobile Drawer */}
-          <div className={`
+          <div
+            className={`
             md:hidden absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md rounded-t-3xl shadow-2xl border-t border-gray-200/50
             transition-all duration-300 ease-in-out transform
-            ${drawerClosing 
-              ? 'translate-y-full' 
-              : 'translate-y-0'
-            }
-          `}>
+            ${drawerClosing ? "translate-y-full" : "translate-y-0"}
+          `}
+          >
             <div className="p-6 pb-8">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-[#1a1a1a]">Add Custom Filter</h3>
+                <h3 className="text-xl font-bold text-[#1a1a1a]">
+                  Add Custom Filter
+                </h3>
                 <button
                   onClick={closeDrawer}
                   className="text-[#999999] hover:text-[#1a1a1a] transition p-1 hover:bg-gray-100 rounded-lg"
@@ -1139,10 +1792,12 @@ const AIPage = () => {
                   <FiX className="text-2xl" />
                 </button>
               </div>
-              
+
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-[#333333] mb-1.5">Filter Name</label>
+                  <label className="block text-sm font-medium text-[#333333] mb-1.5">
+                    Filter Name
+                  </label>
                   <input
                     type="text"
                     value={filterName}
@@ -1152,7 +1807,9 @@ const AIPage = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[#333333] mb-1.5">Filter Value</label>
+                  <label className="block text-sm font-medium text-[#333333] mb-1.5">
+                    Filter Value
+                  </label>
                   <input
                     type="text"
                     value={filterValue}
@@ -1183,7 +1840,9 @@ const AIPage = () => {
           <div className="hidden md:flex items-center justify-center h-full p-4">
             <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl max-w-md w-full p-8 border border-gray-200/50">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-[#1a1a1a]">Add Custom Filter</h3>
+                <h3 className="text-xl font-bold text-[#1a1a1a]">
+                  Add Custom Filter
+                </h3>
                 <button
                   onClick={closeDrawer}
                   className="text-[#999999] hover:text-[#1a1a1a] transition p-1 hover:bg-gray-100 rounded-lg"
@@ -1191,10 +1850,12 @@ const AIPage = () => {
                   <FiX className="text-2xl" />
                 </button>
               </div>
-              
+
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-[#333333] mb-1.5">Filter Name</label>
+                  <label className="block text-sm font-medium text-[#333333] mb-1.5">
+                    Filter Name
+                  </label>
                   <input
                     type="text"
                     value={filterName}
@@ -1204,7 +1865,9 @@ const AIPage = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[#333333] mb-1.5">Filter Value</label>
+                  <label className="block text-sm font-medium text-[#333333] mb-1.5">
+                    Filter Value
+                  </label>
                   <input
                     type="text"
                     value={filterValue}
@@ -1230,6 +1893,50 @@ const AIPage = () => {
               </div>
             </div>
           </div>
+
+          {/* Add this inside the Filter Drawer, after the existing filter fields */}
+          {availableMarketplaces.length > 0 && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-[#333333] mb-2">
+                Marketplace
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {availableMarketplaces.map((marketplace) => (
+                  <button
+                    key={marketplace.id}
+                    onClick={() => {
+                      // Check if this marketplace is already selected
+                      const exists = customFilters.find(
+                        (f) =>
+                          f.name === "Marketplace" &&
+                          f.value === marketplace.label,
+                      );
+                      if (!exists) {
+                        setFilterName("Marketplace");
+                        setFilterValue(marketplace.label);
+                      }
+                    }}
+                    className={`p-2 rounded-lg border text-sm text-left transition-all ${
+                      customFilters.find(
+                        (f) =>
+                          f.name === "Marketplace" &&
+                          f.value === marketplace.label,
+                      )
+                        ? "border-[#009FB8] bg-[#009FB8]/10 text-[#009FB8]"
+                        : "border-gray-200 hover:border-gray-300 text-gray-600"
+                    }`}
+                  >
+                    <div className="font-medium text-xs">
+                      {marketplace.label}
+                    </div>
+                    <div className="text-[10px] text-gray-400">
+                      {marketplace.region}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -574,6 +574,14 @@ export const aiService = {
         }, 400);
 
         intervals.push(productInterval);
+        setTimeout(() => {
+          if (!isCancelled) {
+            onComplete?.({
+              success: true,
+              data: report.report || report,
+            });
+          }
+        }, 300);
       }
 
       // Add cancellation cleanup
@@ -594,6 +602,40 @@ export const aiService = {
       onError?.('An error occurred during simulation.');
     }
   },
+
+// Add to aiService:
+
+  /**
+   * Non-streaming search fallback.
+   * Useful when SSE is not supported or for simpler queries.
+   */
+  searchQuery: async (query, filters, preferences) => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const searchData = buildSearchData(query, filters, preferences);
+      
+      const response = await fetch(`${BASE_URL}/search`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` }),
+        },
+        credentials: 'include',
+        body: JSON.stringify(searchData),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Search failed with status ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('[AI Service] Search error:', error);
+      throw error;
+    }
+  },
 };
 
 // ============================================================================
@@ -609,25 +651,25 @@ export const aiService = {
  * @returns {Object} Formatted search data
  */
 function buildSearchData(query, filters, preferences) {
-  const combinedFilters = [
-    ...(filters || []).map(f => ({ name: f.name, value: f.value })),
-    ...(preferences?.budgetMin && preferences?.budgetMax ? [{
-      name: 'Budget Range',
-      value: `${preferences.preferredCurrency || 'USD'} ${preferences.budgetMin} - ${preferences.budgetMax}`
-    }] : []),
-    ...(preferences?.prioritizePrice ? [{
-      name: 'Priority',
-      value: 'Best Price'
-    }] : []),
-    ...(preferences?.prioritizeQuality ? [{
-      name: 'Priority',
-      value: 'Best Quality'
-    }] : []),
-  ].filter(Boolean);
+  // Map filters to backend's expected format
+  const marketplaces = (filters || [])
+    .filter(f => f.name === 'Marketplace')
+    .map(f => f.value.toLowerCase());
 
   return {
     query,
-    filters: combinedFilters,
+    // ✅ Match your backend's SearchRequestSchema
+    marketplaces: marketplaces.length > 0 ? marketplaces : undefined,
+    context: {
+      // Include preferences as context
+      preferences: preferences ? {
+        budgetMin: preferences.budgetMin,
+        budgetMax: preferences.budgetMax,
+        preferredCurrency: preferences.preferredCurrency,
+        prioritizePrice: preferences.prioritizePrice,
+        prioritizeQuality: preferences.prioritizeQuality,
+      } : undefined,
+    },
   };
 }
 
@@ -648,11 +690,9 @@ async function executeStream(searchData, callbacks, serviceInstance) {
     onError,
   } = callbacks;
 
-  // Create AbortController for this request
   const abortController = new AbortController();
   serviceInstance._activeAbortController = abortController;
 
-  // Set up timeout
   const timeoutId = setTimeout(() => {
     abortController.abort();
     const timeoutError = new Error('TimeoutError');
@@ -662,10 +702,16 @@ async function executeStream(searchData, callbacks, serviceInstance) {
   serviceInstance._activeTimeoutId = timeoutId;
 
   try {
-    const response = await fetch(`${BASE_URL}/ai/search`, {
+    // Get auth token from localStorage
+    const token = localStorage.getItem('accessToken');
+    
+    // ✅ CORRECTED: Use /search?stream=true instead of /ai/search
+    const response = await fetch(`${BASE_URL}/search?stream=true`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        // ✅ ADDED: Authorization header required by backend's authenticateToken middleware
+        ...(token && { 'Authorization': `Bearer ${token}` }),
       },
       credentials: 'include',
       body: JSON.stringify(searchData),
@@ -676,30 +722,35 @@ async function executeStream(searchData, callbacks, serviceInstance) {
     clearTimeout(timeoutId);
     serviceInstance._activeTimeoutId = null;
 
-    // Check for HTTP errors
+    // Check for HTTP errors - handle 401 specifically
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      // Try to parse error from backend (your backend uses AppError format)
+      let errorMessage = `HTTP error! status: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorMessage;
+      } catch (e) {
+        // Couldn't parse JSON error response
+      }
+      
+      const error = new Error(errorMessage);
+      error.status = response.status;
+      throw error;
     }
 
-    // Ensure we have a readable body
+    // ... rest of the SSE handling remains the same ...
     if (!response.body) {
       throw new Error('Response body is not readable');
     }
 
-    // Set up SSE parsing
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     const sseParser = new SSEParser();
-
-    // Event handler map - replaces switch statement for better maintainability
     const eventHandlers = createEventHandlers(callbacks);
 
-    // Read stream loop
     while (true) {
       const { done, value } = await reader.read();
-
       if (done) {
-        // Process any remaining data in the parser buffer
         const remainingEvents = sseParser.parse('');
         for (const event of remainingEvents) {
           processSSEEvent(event, eventHandlers);
@@ -707,17 +758,13 @@ async function executeStream(searchData, callbacks, serviceInstance) {
         break;
       }
 
-      // Decode chunk and parse SSE events
       const chunk = decoder.decode(value, { stream: true });
       const events = sseParser.parse(chunk);
-
-      // Process each complete event
       for (const event of events) {
         processSSEEvent(event, eventHandlers);
       }
     }
 
-    // Clean up reader
     try {
       reader.releaseLock();
     } catch (e) {
@@ -725,20 +772,23 @@ async function executeStream(searchData, callbacks, serviceInstance) {
     }
 
   } catch (error) {
-    // Clear timeout
     clearTimeout(timeoutId);
     serviceInstance._activeTimeoutId = null;
 
-    // Don't report aborted requests as errors to the user
     if (error.name === 'AbortError') {
       console.log('[AI Service] Request aborted');
       return;
     }
 
-    // Re-throw for retry logic
+    // Handle 401 - token expired
+    if (error.status === 401) {
+      onError?.('Your session has expired. Please log in again.');
+      // Optionally trigger token refresh or redirect
+      return;
+    }
+
     throw error;
   } finally {
-    // Clean up references
     if (serviceInstance._activeAbortController === abortController) {
       serviceInstance._activeAbortController = null;
     }
@@ -761,80 +811,70 @@ function createEventHandlers(callbacks) {
   const { onProgress, onProductFound, onReportUpdate, onComplete, onError } = callbacks;
 
   return {
-    /**
-     * Handles progress events from the server.
-     */
+    // Progress updates during search
     progress: (data) => {
-      if (PayloadValidator.validateProgress(data)) {
-        onProgress?.({
-          progress: data.progress,
-          message: data.message || 'Processing...',
-          marketplacesSearched: data.marketplacesSearched || [],
-          totalProductsFound: data.totalProductsFound || 0,
-        });
-      } else {
-        console.warn('[AI Service] Invalid progress event payload:', data);
-      }
+      onProgress?.({
+        progress: data.progress || 0,
+        message: data.message || 'Processing...',
+        stage: data.stage,
+        marketplacesSearched: data.marketplacesSearched || [],
+        totalProductsFound: data.totalProductsFound || 0,
+      });
     },
 
-    /**
-     * Handles individual product events from the server.
-     */
+    // Individual product found
     product: (data) => {
-      if (PayloadValidator.validateProduct(data)) {
-        onProductFound?.(data.product);
-      } else {
-        console.warn('[AI Service] Invalid product event payload:', data);
+      onProductFound?.(data.product || data);
+    },
+
+    // New event: products batch
+    products: (data) => {
+      if (data.products && Array.isArray(data.products)) {
+        data.products.forEach(product => {
+          onProductFound?.(product);
+        });
       }
     },
 
-    /**
-     * Handles report update events from the server.
-     */
+    // Report updates during generation
     report_update: (data) => {
-      if (PayloadValidator.validateReportUpdate(data)) {
-        onReportUpdate?.(data.report);
-      } else {
-        console.warn('[AI Service] Invalid report_update event payload:', data);
-      }
+      onReportUpdate?.(data.report || data);
     },
 
-    /**
-     * Handles stream completion events from the server.
-     * Validates ranking consistency before forwarding.
-     */
+    // Search complete
     complete: (data) => {
-      if (PayloadValidator.validateComplete(data)) {
-        // Validate ranking consistency
+      if (data.report) {
         const validatedReport = validateRankingConsistency(data.report);
         onComplete?.({
           ...data,
           report: validatedReport,
         });
       } else {
-        console.warn('[AI Service] Invalid complete event payload:', data);
-        onError?.('Received invalid completion data from server.');
+        onComplete?.(data);
       }
     },
 
-    /**
-     * Handles error events from the server.
-     */
+    // Search result (non-streaming fallback)
+    result: (data) => {
+      if (data.report) {
+        onComplete?.(data);
+      }
+    },
+
+    // Error event
     error: (data) => {
-      if (PayloadValidator.validateError(data)) {
-        const friendlyMessage = getUserFriendlyError(data.message);
-        console.error('[AI Service] Server error:', data.message);
-        onError?.(friendlyMessage);
-      } else {
-        console.warn('[AI Service] Invalid error event payload:', data);
-        onError?.(ERROR_MESSAGES.default);
-      }
+      const message = typeof data === 'string' ? data : (data.message || data.error || 'Search failed');
+      console.error('[AI Service] Server error:', message);
+      onError?.(getUserFriendlyError(message));
     },
 
-    /**
-     * Default handler for unrecognized event types.
-     * Logs but does not crash.
-     */
+    // Done event
+    done: (data) => {
+      console.log('[AI Service] Stream done:', data);
+      // Usually the complete handler is called separately
+    },
+
+    // Default handler
     default: (data, eventType) => {
       console.log('[AI Service] Unhandled event type:', eventType, data);
     },
