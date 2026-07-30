@@ -2,49 +2,106 @@
  * querySanitizer.ts
  *
  * Two responsibilities:
- * 1. sanitizeQuery()   — strips noise before sending to marketplace adapters
+ * 1. sanitizeQuery()   — strips conversational noise before sending to marketplace adapters
  * 2. validateQuery()   — pre-flight check for queries that shouldn't be processed
- *                        Returns null if OK, or an error message string if rejected
  */
 
 // ── Sanitize ──────────────────────────────────────────────────────────────────
 
+// Leading conversational phrases to strip
 const STOP_PHRASES = [
-  'i want to buy', 'i want', 'i need', 'i am looking for', "i'm looking for",
-  'am planning to buy', 'am planning buy', 'planning to buy', 'help me find',
-  'find me', 'show me', 'give me', 'can you find', 'looking for', 'search for',
-  'please find', 'i would like', 'suggest', 'recommend',
+  'i am planning to buy',
+  'am planning to buy',
+  'am planning buy',
+  'i want to buy',
+  'i need to buy',
+  'i want to get',
+  'i need to get',
+  'i am looking for',
+  "i'm looking for",
+  'looking to buy',
+  'looking for',
+  'planning to buy',
+  'help me find',
+  'find me a',
+  'find me',
+  'show me a',
+  'show me',
+  'give me a',
+  'give me',
+  'can you find',
+  'search for',
+  'please find',
+  'i would like to buy',
+  'i would like',
+  'i want',
+  'i need',
+];
+
+// Trailing noise words that add no value to a marketplace search
+const TRAILING_NOISE = [
+  'where can i buy',
+  'where can i get',
+  'where to buy',
+  'where to get',
+  'where',
+  'please',
+  'online',
+  'near me',
 ];
 
 export function sanitizeQuery(raw: string): string {
   let q = raw.trim().toLowerCase();
 
-  // Strip leading stop phrases
-  for (const phrase of STOP_PHRASES) {
+  // Strip leading stop phrases (longest match first)
+  const sortedPhrases = [...STOP_PHRASES].sort((a, b) => b.length - a.length);
+  for (const phrase of sortedPhrases) {
     if (q.startsWith(phrase)) {
       q = q.slice(phrase.length).trim();
-      break; // only strip one leading phrase
+      break;
     }
   }
+
+  // Regex-based fallback for common typo patterns the exact phrases miss.
+  // Catches: "awant to buy X", "i wnat to get X", "gonna buy X"
+  q = q
+    .replace(/^[ai]?\s*[aw]{1,2}an[t]?\s+(?:to\s+)?(?:buy|get|purchase|order)\s+/i, '')
+    .replace(/^[ai]\s+(?:need|want|wanna|gonna\s+buy|plan\s+to\s+buy)\s+/i, '')
+    .replace(/^(?:pls?|please)\s+(?:find|show|give)\s+me\s+/i, '')
+    .replace(/^(?:awant|wnat|wannt)\s+(?:to\s+)?(?:buy|get)?\s*/i, '')
+    .trim();
+
+  // Strip trailing noise (e.g. "condom where" → "condom")
+  const sortedTrailing = [...TRAILING_NOISE].sort((a, b) => b.length - a.length);
+  for (const noise of sortedTrailing) {
+    if (q.endsWith(noise)) {
+      q = q.slice(0, q.length - noise.length).trim();
+      break;
+    }
+  }
+
+  // Strip leftover filler at the end: "...for me", "...for sale"
+  q = q.replace(/\s+(?:for\s+me|for\s+sale|on\s+sale|in\s+nigeria|in\s+lagos)$/i, '').trim();
 
   // Remove special characters except spaces, hyphens, and common punctuation
   q = q.replace(/[^\w\s\-.,&]/g, ' ').replace(/\s{2,}/g, ' ').trim();
 
-  return q || raw.trim(); // never return empty
+  // Never return empty — fall back to raw
+  return q.length >= 2 ? q : raw.trim();
 }
 
 // ── Validate ──────────────────────────────────────────────────────────────────
 
-// Categories that are not shoppable on these marketplaces
+// Queries that have nothing to do with shopping
 const NON_SHOPPING_PATTERNS = [
   /\b(weather|forecast|temperature|climate)\b/i,
-  /\b(news|headline|latest news|breaking)\b/i,
-  /\b(recipe|how to cook|ingredients|bake|cooking)\b/i,
-  /\b(translate|translation|what does .* mean)\b/i,
-  /\b(capital of|president of|who is|what is the)\b/i,
-  /\b(math|calculate|solve|equation|\d+\s*[+\-*/]\s*\d+)\b/i,
-  /\b(joke|tell me a|funny|poem|write me)\b/i,
-  /\b(hello|hi there|how are you|good morning|greetings)\b/i,
+  /\b(news|headline|latest\s+news|breaking)\b/i,
+  /\b(recipe|how\s+to\s+cook|ingredients|bake)\b/i,
+  /\b(translate|translation)\b/i,
+  /\b(capital\s+of|president\s+of|who\s+is|what\s+is\s+the)\b/i,
+  /\b(calculate|solve\s+equation|\d+\s*[+\-*/]\s*\d+)\b/i,
+  /\b(joke|tell\s+me\s+a|write\s+me\s+a|poem)\b/i,
+  /^(hello|hi\s+there|how\s+are\s+you|good\s+morning|greetings)[\s!?.]*$/i,
 ];
 
 // NSFW / adult content
@@ -56,19 +113,16 @@ const NSFW_PATTERNS = [
 
 // Dangerous / illegal items
 const ILLEGAL_PATTERNS = [
-  /\b(gun|firearm|pistol|rifle|ammo|ammunition|silencer|suppressor)\b/i,
-  /\b(drug|cocaine|heroin|fentanyl|meth|cannabis|weed|marijuana)\b/i,
-  /\b(explosive|bomb|grenade|weapon|knife\s*for\s*killing)\b/i,
-  /\b(hack|malware|phishing|stolen|counterfeit|fake\s*id|forged)\b/i,
+  /\b(firearm|pistol|rifle|ammo|ammunition|silencer|suppressor)\b/i,
+  /\b(cocaine|heroin|fentanyl|meth)\b/i,
+  /\b(explosive|bomb|grenade|knife\s+for\s+killing)\b/i,
+  /\b(malware|phishing|counterfeit|fake\s+id|forged)\b/i,
 ];
 
-// Too short / gibberish
 function isGibberish(q: string): boolean {
   const trimmed = q.trim();
   if (trimmed.length < 2) return true;
-  // All digits or all special chars
   if (/^[\d\s]+$/.test(trimmed)) return true;
-  // Random character strings (no vowels, very short words)
   const words = trimmed.split(/\s+/);
   if (words.length === 1 && words[0].length < 2) return true;
   return false;
@@ -77,11 +131,11 @@ function isGibberish(q: string): boolean {
 export interface QueryValidation {
   valid: boolean;
   reason?: string;
-  /** Friendly message to show the user */
   message?: string;
 }
 
 export function validateQuery(query: string): QueryValidation {
+  // Run validation on the raw query, not the sanitized version
   const q = query.trim();
 
   if (isGibberish(q)) {

@@ -5,6 +5,7 @@
  * Zero AI calls — runs in < 5ms per query.
  */
 import nlp from 'compromise';
+import { sanitizeQuery } from '../adapters/querySanitizer';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -12,8 +13,8 @@ export interface ShoppingIntent {
   productType: string;
   brand: string | null;
   model: string | null;
-  searchTerms: string[];
-  excludeTerms: string[];
+  searchTerms: string[];   // clean tokens sent to marketplace adapters
+  excludeTerms: string[];  // accessory/noise keywords to filter from results
   budgetMax: number | null;
   priceFloor: number;
   queryWarning: string | null;
@@ -33,11 +34,12 @@ const CATEGORIES: CategoryDef[] = [
     priceFloor: 40,
   },
   {
-    pattern: /\bphone|iphone|smartphone|android|pixel|galaxy|redmi|poco|oneplus\b/i,
+    pattern: /\bphone|iphone|smartphone|android|pixel|galaxy|redmi|poco|oneplus|infinix|tecno\b/i,
     type: 'smartphone',
     exclude: ['charger','cable','case','cover','screen protector','holder','controller',
               'trigger','gamepad','joystick','ring light','pop socket','grip','stand',
-              'dock','earphone','power bank','battery','adapter','selfie stick','tempered glass'],
+              'dock','earphone','power bank','battery','adapter','selfie stick',
+              'tempered glass','gimbal','stabilizer','mount','tripod','lens'],
     priceFloor: 25,
   },
   {
@@ -99,29 +101,35 @@ const CATEGORIES: CategoryDef[] = [
 
 // ── Brand detection ──────────────────────────────────────────────────────────
 
-const BRANDS: { pattern: RegExp; brand: string }[] = [
-  { pattern: /\bapple\b/i,   brand: 'Apple'   },
-  { pattern: /\biphone\b/i,  brand: 'Apple'   },
-  { pattern: /\bmacbook\b/i, brand: 'Apple'   },
-  { pattern: /\bsamsung\b/i, brand: 'Samsung' },
-  { pattern: /\bgalaxy\b/i,  brand: 'Samsung' },
-  { pattern: /\bhp\b/i,      brand: 'HP'      },
-  { pattern: /\bdell\b/i,    brand: 'Dell'    },
-  { pattern: /\blenovo\b/i,  brand: 'Lenovo'  },
-  { pattern: /\basus\b/i,    brand: 'Asus'    },
-  { pattern: /\bacer\b/i,    brand: 'Acer'    },
-  { pattern: /\bsony\b/i,    brand: 'Sony'    },
-  { pattern: /\blg\b/i,      brand: 'LG'      },
-  { pattern: /\bxiaomi\b/i,  brand: 'Xiaomi'  },
-  { pattern: /\bredmi\b/i,   brand: 'Xiaomi'  },
-  { pattern: /\bbose\b/i,    brand: 'Bose'    },
-  { pattern: /\bjbl\b/i,     brand: 'JBL'     },
-  { pattern: /\bnike\b/i,    brand: 'Nike'    },
-  { pattern: /\badidas\b/i,  brand: 'Adidas'  },
-  { pattern: /\bhuawei\b/i,  brand: 'Huawei'  },
-  { pattern: /\boppo\b/i,    brand: 'Oppo'    },
-  { pattern: /\bgoogle\b/i,  brand: 'Google'  },
-  { pattern: /\bpixel\b/i,   brand: 'Google'  },
+const BRANDS: { pattern: RegExp; brand: string; searchName: string }[] = [
+  // Specific model/sub-brand patterns first (before generic brand patterns)
+  { pattern: /\biphone\b/i,   brand: 'Apple',    searchName: 'iphone'        },
+  { pattern: /\bmacbook\b/i,  brand: 'Apple',    searchName: 'macbook'       },
+  { pattern: /\bgalaxy\b/i,   brand: 'Samsung',  searchName: 'samsung galaxy'},
+  { pattern: /\bredmi\b/i,    brand: 'Xiaomi',   searchName: 'redmi'         },
+  { pattern: /\bpoco\b/i,     brand: 'Xiaomi',   searchName: 'poco'          },
+  { pattern: /\bpixel\b/i,    brand: 'Google',   searchName: 'google pixel'  },
+  // Generic brand names
+  { pattern: /\bapple\b/i,    brand: 'Apple',    searchName: 'apple'         },
+  { pattern: /\bsamsung\b/i,  brand: 'Samsung',  searchName: 'samsung'       },
+  { pattern: /\bhp\b/i,       brand: 'HP',       searchName: 'hp'            },
+  { pattern: /\bdell\b/i,     brand: 'Dell',     searchName: 'dell'          },
+  { pattern: /\blenovo\b/i,   brand: 'Lenovo',   searchName: 'lenovo'        },
+  { pattern: /\basus\b/i,     brand: 'Asus',     searchName: 'asus'          },
+  { pattern: /\bacer\b/i,     brand: 'Acer',     searchName: 'acer'          },
+  { pattern: /\bsony\b/i,     brand: 'Sony',     searchName: 'sony'          },
+  { pattern: /\blg\b/i,       brand: 'LG',       searchName: 'lg'            },
+  { pattern: /\bxiaomi\b/i,   brand: 'Xiaomi',   searchName: 'xiaomi'        },
+  { pattern: /\bbose\b/i,     brand: 'Bose',     searchName: 'bose'          },
+  { pattern: /\bjbl\b/i,      brand: 'JBL',      searchName: 'jbl'           },
+  { pattern: /\bnike\b/i,     brand: 'Nike',     searchName: 'nike'          },
+  { pattern: /\badidas\b/i,   brand: 'Adidas',   searchName: 'adidas'        },
+  { pattern: /\bhuawei\b/i,   brand: 'Huawei',   searchName: 'huawei'        },
+  { pattern: /\boppo\b/i,     brand: 'Oppo',     searchName: 'oppo'          },
+  { pattern: /\bgoogle\b/i,   brand: 'Google',   searchName: 'google'        },
+  { pattern: /\binfinix\b/i,  brand: 'Infinix',  searchName: 'infinix'       },
+  { pattern: /\btecno\b/i,    brand: 'Tecno',    searchName: 'tecno'         },
+  { pattern: /\boneplus\b/i,  brand: 'OnePlus',  searchName: 'oneplus'       },
 ];
 
 // ── Product corrections (future/non-existent products) ───────────────────────
@@ -144,13 +152,14 @@ const CORRECTIONS: { pattern: RegExp; correction: string; warning: string }[] = 
   },
 ];
 
-// ── Filler words ─────────────────────────────────────────────────────────────
+// ── Filler words to strip from search tokens ─────────────────────────────────
 
 const FILLER = new Set([
   'i','me','my','a','an','the','is','are','be','been','have','has','do','will','would',
   'could','should','can','need','want','find','get','show','give','tell','for','to','of',
   'in','on','at','by','with','from','about','please','something','anything','recommend',
   'suggest','best','good','great','nice','cheap','affordable','quality','popular','top','rated',
+  'while','some','just','really','very','so','also','too','any','all','both','either',
 ]);
 
 // ── Descriptive query category clues ─────────────────────────────────────────
@@ -172,27 +181,27 @@ const CLUES: [RegExp, string, string[], number][] = [
 
 function nlpKeywords(text: string): string[] {
   const doc = nlp(text);
-  // Get individual noun words only (not full noun phrases to avoid "something comfortable")
   const nouns = (doc.nouns().out('array') as string[])
-    .map(n => n.toLowerCase().trim())
-    .filter(n => !n.includes(' ')); // skip multi-word phrases to avoid noisy compounds
+    .map((n: string) => n.toLowerCase().trim())
+    .filter((n: string) => !n.includes(' '));
   const skip = new Set(['good','great','best','nice','cheap','affordable','expensive',
     'fast','slow','big','small','new','old','latest','popular','reliable','powerful',
     'comfortable','lightweight','heavy']);
   const adjs = (doc.adjectives().out('array') as string[])
-    .filter(a => !skip.has(a.toLowerCase()))
-    .map(a => a.toLowerCase().trim())
-    .filter(a => !a.includes(' '));
-  return [...new Set([...nouns, ...adjs].filter(w => w.length >= 3))].slice(0, 6);
+    .filter((a: string) => !skip.has(a.toLowerCase()))
+    .map((a: string) => a.toLowerCase().trim())
+    .filter((a: string) => !a.includes(' '));
+  return [...new Set([...nouns, ...adjs].filter((w: string) => w.length >= 3))].slice(0, 6);
 }
 
 // ── Main export ──────────────────────────────────────────────────────────────
 
 export function extractIntent(query: string): ShoppingIntent {
-  let q = query.trim();
+  // Sanitize first to strip conversational noise and typos
+  let q = sanitizeQuery(query).trim();
   let queryWarning: string | null = null;
 
-  // 1. Correct non-existent products
+  // 1. Correct non-existent / future products
   for (const c of CORRECTIONS) {
     if (c.pattern.test(q)) {
       queryWarning = c.warning;
@@ -201,7 +210,7 @@ export function extractIntent(query: string): ShoppingIntent {
     }
   }
 
-  // 2. Extract budget — supports $, ₦, £, €, plain numbers after budget keywords
+  // 2. Extract budget — supports $, ₦, £, €
   let budgetMax: number | null = null;
   const bm = q.match(/(?:under|below|less\s+than|up\s+to|within|around)\s+[₦$£€]?\s*([\d,]+(?:\.\d+)?)(k?)\b/i)
           || q.match(/[₦$£€]\s*([\d,]+(?:\.\d+)?)(k?)\b/i);
@@ -224,16 +233,21 @@ export function extractIntent(query: string): ShoppingIntent {
     }
   }
 
-  // 4. Detect brand
+  // 4. Detect brand — record both display name and search name
   let brand: string | null = null;
+  let brandSearchName: string | null = null;
   for (const b of BRANDS) {
-    if (b.pattern.test(q)) { brand = b.brand; break; }
+    if (b.pattern.test(q)) {
+      brand = b.brand;
+      brandSearchName = b.searchName;
+      break;
+    }
   }
 
-  // 5. Strip price/filler for search terms
+  // 5. Strip budget/filler noise before tokenising
   const stripped = q
-    .replace(/(?:under|below|less\s+than|up\s+to|within|around)\s+\$?[\d,]+(?:\.\d+)?k?\b/gi, '')
-    .replace(/\$[\d,]+(?:\.\d+)?k?\b/gi, '')
+    .replace(/(?:under|below|less\s+than|up\s+to|within|around)\s+[₦$£€]?[\d,]+(?:\.\d+)?k?\b/gi, '')
+    .replace(/[₦$£€][\d,]+(?:\.\d+)?k?\b/gi, '')
     .replace(/\b\d+(?:\.\d+)?\s*dollars?\b/gi, '')
     .replace(/\b(show|me|find|i\s+want|i\s+need|please|can\s+you|give)\b/gi, '')
     .replace(/\s{2,}/g, ' ')
@@ -251,12 +265,10 @@ export function extractIntent(query: string): ShoppingIntent {
   let searchTerms = regexTokens.slice(0, 5);
 
   if (isDescriptive) {
-    const nlp = nlpKeywords(stripped);
-
-    // Try to resolve unknown category from clues
+    const nlpTerms = nlpKeywords(stripped);
     if (productType === 'general') {
       for (const [pattern, type, exclude, floor] of CLUES) {
-        if (pattern.test(q) || nlp.some(k => pattern.test(k))) {
+        if (pattern.test(q) || nlpTerms.some(k => pattern.test(k))) {
           productType = type;
           excludeTerms = exclude;
           priceFloor = floor;
@@ -264,8 +276,7 @@ export function extractIntent(query: string): ShoppingIntent {
         }
       }
     }
-
-    const merged = [...new Set([...regexTokens, ...nlp])].slice(0, 5);
+    const merged = [...new Set([...regexTokens, ...nlpTerms])].slice(0, 5);
     if (merged.length > 0) searchTerms = merged;
   }
 
@@ -273,9 +284,27 @@ export function extractIntent(query: string): ShoppingIntent {
     searchTerms = [stripped.toLowerCase().slice(0, 40)];
   }
 
-  const parts = [searchTerms.slice(0, 3).join(' ')];
-  if (brand) parts.push('by ' + brand);
-  if (budgetMax) parts.push('under $' + budgetMax);
+  // 8. Build a focused adapter query:
+  //    - Brand detected: use brand's searchName + productType  → "redmi smartphone"
+  //    - ProductType only: use productType + extra tokens      → "smartphone under 200"
+  //    - Neither: fall back to cleaned tokens
+  //
+  // This ensures marketplace adapters always get a tight, relevant search string
+  // instead of raw NLP tokens that may include noise.
+  let adapterQuery: string;
+  if (brandSearchName && productType !== 'general') {
+    adapterQuery = `${brandSearchName} ${productType}`;
+  } else if (brandSearchName) {
+    const extraTerms = regexTokens.filter(t => !brandSearchName!.includes(t)).slice(0, 2);
+    adapterQuery = extraTerms.length ? `${brandSearchName} ${extraTerms.join(' ')}` : brandSearchName;
+  } else if (productType !== 'general') {
+    const extraTerms = regexTokens.filter(t => t !== productType).slice(0, 2);
+    adapterQuery = extraTerms.length ? `${productType} ${extraTerms.join(' ')}` : productType;
+  } else {
+    adapterQuery = searchTerms.slice(0, 3).join(' ');
+  }
+
+  searchTerms = adapterQuery.split(' ').filter(t => t.length > 1);
 
   return {
     productType,
@@ -286,6 +315,6 @@ export function extractIntent(query: string): ShoppingIntent {
     budgetMax,
     priceFloor,
     queryWarning,
-    summary: 'Searching for ' + parts.join(' '),
+    summary: `Searching for ${adapterQuery}${budgetMax ? ' under ' + budgetMax : ''}`,
   };
 }

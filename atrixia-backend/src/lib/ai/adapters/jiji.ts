@@ -59,21 +59,21 @@ export class JijiAdapter implements IMarketplaceAdapter {
     const fromNuxt = this._extractFromNuxtState(html, clean, options);
     if (fromNuxt.length > 0) {
       console.log(`[JijiAdapter] ${fromNuxt.length} products via __NUXT__ state`);
-      return fromNuxt.slice(0, this.MAX_RESULTS);
+      return fromNuxt.slice(0, 8);
     }
 
     // Strategy 2 — <script id="__NUXT_DATA__"> (Nuxt 3 style)
     const fromNuxt3 = this._extractFromNuxt3Data(html, clean, options);
     if (fromNuxt3.length > 0) {
       console.log(`[JijiAdapter] ${fromNuxt3.length} products via __NUXT_DATA__`);
-      return fromNuxt3.slice(0, this.MAX_RESULTS);
+      return fromNuxt3.slice(0, 8);
     }
 
     // Strategy 3 — any application/json script block containing "adverts"
     const fromJsonBlock = this._extractFromJsonBlocks(html, clean, options);
     if (fromJsonBlock.length > 0) {
       console.log(`[JijiAdapter] ${fromJsonBlock.length} products via JSON script block`);
-      return fromJsonBlock.slice(0, this.MAX_RESULTS);
+      return fromJsonBlock.slice(0, 8);
     }
 
     // Strategy 4 — HTML card fallback
@@ -86,7 +86,8 @@ export class JijiAdapter implements IMarketplaceAdapter {
           'Jiji may have changed its SSR format.'
       );
     }
-    return fromHtml.slice(0, this.MAX_RESULTS);
+    // Return up to 8 — let the manager's filter pick the best 3
+    return fromHtml.slice(0, 8);
   }
 
   // ─── Strategy 1: window.__NUXT__ ──────────────────────────────────────────

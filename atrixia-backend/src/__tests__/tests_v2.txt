@@ -1,0 +1,10 @@
+
+ RUN  v4.1.10 /home/kingjoker/Documents/Atrixia/atrixia-backend
+
+
+ Test Files  5 passed (5)
+      Tests  45 passed (45)
+   Start at  15:00:37
+   Duration  2.71s (transform 829ms, setup 0ms, import 4.10s, tests 396ms, environment 1ms)
+
+EXIT:0
