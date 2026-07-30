@@ -1,12 +1,13 @@
 // pages/auth/ForgotPassword.jsx
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { FiMail, FiArrowLeft } from 'react-icons/fi';
 import AnimatedGridBackground from '../../components/AnimatedGridBackground';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const navigate = useNavigate();
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -14,55 +15,64 @@ const ForgotPassword = () => {
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-64px)] flex items-center justify-center py-20 bg-linear-to-br from-gray-50 to-gray-100">
-      <AnimatedGridBackground />
-      <div className="absolute top-10 left-10 flex items-center text-3xl">
-        <img onClick={() => navigate(-1)} src="/logo.png" alt="" className='w-20 h-20 cursor-pointer mb-5'/>trixia
+    <div className="relative min-h-screen flex items-center justify-center md:py-20 bg-[#f8f8f8] overflow-hidden">
+      <AnimatedGridBackground/>
+      
+      <div className="absolute top-4 left-4 z-20 flex items-center text-2xl font-semibold">
+        <img 
+          onClick={() => navigate(-1)} 
+          src="/logo.png" 
+          alt="Logo" 
+          className="w-12 h-12 cursor-pointer mb-2" 
+        />
+        trixia
       </div>
 
-      <div className="relative z-10 w-full max-w-md">
-        <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-100">
-          <Link to="/signin" className="text-gray-600 hover:text-[#009FB8] transition inline-flex items-center gap-1 mb-6">
-            <FiArrowLeft /> Back to Sign In
-          </Link>
+      <div className="relative z-10 w-full h-screen md:h-fit max-w-md md:px-4 px-0">
+        <div className="md:bg-white/30 h-full backdrop-blur-xs md:p-6 p-8 md:rounded-2xl shadow-xl border border-gray-100/50 flex items-center">
+          <div className="w-full mb-30 md:mb-0">
+            <Link to="/signin" className="text-[#666666] hover:text-[#009FB8] transition inline-flex items-center gap-1 mb-6 text-sm">
+              <FiArrowLeft /> Back to Sign In
+            </Link>
 
-          <h2 className="text-3xl font-bold text-[#2D2D2D] mb-2">
-            Reset Password
-          </h2>
-          <p className="text-gray-600 mb-6">
-            Enter your email and we'll send you a reset link
-          </p>
+            <h2 className="text-3xl font-bold text-[#1a1a1a] font-serif-brand mb-2">
+              Reset Password
+            </h2>
+            <p className="text-[#666666] mb-6 text-sm">
+              Enter your email and we'll send you a reset link
+            </p>
 
-          {submitted ? (
-            <div className="bg-green-50 text-green-700 p-4 rounded-lg">
-              <p className="font-semibold">Check your email!</p>
-              <p className="text-sm mt-1">We've sent a password reset link to {email}</p>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <div className="relative">
-                  <FiMail className="absolute left-3 top-3 text-gray-400" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#009FB8] focus:border-transparent"
-                    placeholder="you@example.com"
-                    required
-                  />
-                </div>
+            {submitted ? (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-4 rounded-xl">
+                <p className="font-semibold">Check your email!</p>
+                <p className="text-sm mt-1">We've sent a password reset link to {email}</p>
               </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                  <label className="block text-sm font-medium text-[#333333] mb-1.5">Email</label>
+                  <div className="relative">
+                    <FiMail className="absolute left-3.5 top-3.5 text-[#999999]" />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 bg-white/50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#009FB8] transition"
+                      placeholder="you@example.com"
+                      required
+                    />
+                  </div>
+                </div>
 
-              <button
-                type="submit"
-                className="w-full bg-[#009FB8] text-white py-2 rounded-lg font-semibold hover:bg-[#008A9F] transition"
-              >
-                Send Reset Link
-              </button>
-            </form>
-          )}
+                <button
+                  type="submit"
+                  className="w-full bg-[#1a1a1a] text-white py-3 rounded-xl font-semibold hover:bg-[#333333] transition"
+                >
+                  Send Reset Link
+                </button>
+              </form>
+            )}
+          </div>
         </div>
       </div>
     </div>

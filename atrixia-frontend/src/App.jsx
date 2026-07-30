@@ -23,6 +23,8 @@ import { setNavigate } from "./services/navigation";
 import VerifyEmail from "./pages/auth/VerifyEmail";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Forbidden from "./pages/Forbidden";
+import PublicRoute from "./components/PublicRoute";
+import NotFound from "./pages/NotFound";
 
 function App() {
   const location = useLocation();
@@ -43,7 +45,15 @@ function App() {
       "reset-password",
       "forgot-password",
     ];
-    return noNavRoutes.some((route) => location.pathname.includes(route));
+    // Check if current path matches any of the no-nav routes
+    // OR if it's the catch-all route (NotFound)
+    return noNavRoutes.some((route) => location.pathname.includes(route)) 
+      || location.pathname === '/forbidden'
+      || location.pathname === '/not-found'
+      // Check if it's a 404 route (any route not matching known paths)
+      || !['/', '/how-it-works', '/signup', '/signin', '/forgot-password', '/reset-password', '/verify-email', '/forbidden', '/ai', '/wishlist', '/product'].some(
+        (route) => location.pathname === route || location.pathname.startsWith(route + '/')
+      );
   };
 
   const NoFooterRoute = () => {
@@ -57,7 +67,13 @@ function App() {
       "reset-password",
       "forgot-password",
     ];
-    return noNavRoutes.some((route) => location.pathname.includes(route));
+    // Same logic as NoNavOrFooterRoute
+    return noNavRoutes.some((route) => location.pathname.includes(route)) 
+      || location.pathname === '/forbidden'
+      || location.pathname === '/not-found'
+      || !['/', '/how-it-works', '/signup', '/signin', '/forgot-password', '/reset-password', '/verify-email', '/forbidden', '/ai', '/wishlist', '/product'].some(
+        (route) => location.pathname === route || location.pathname.startsWith(route + '/')
+      );
   };
 
   return (
@@ -66,11 +82,47 @@ function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/how-it-works" element={<HowItWorks />} />
-        <Route path="/signup" element={<SignUp />} />
-        <Route path="/signin" element={<SignIn />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route path="*" element={<NotFound />} />
+        <Route 
+          path="/signup"
+          element={
+            <PublicRoute>
+              <SignUp />
+            </PublicRoute>
+          }
+        />
+        <Route 
+          path="/signin"
+          element={
+            <PublicRoute>
+              <SignIn />
+            </PublicRoute>
+          }
+        />
+        <Route 
+          path="/forgot-password"
+          element={
+            <PublicRoute>
+              <ForgotPassword />
+            </PublicRoute>
+          }
+        />
+        <Route 
+          path="/reset-password"
+          element={
+            <PublicRoute>
+              <ResetPassword />
+            </PublicRoute>
+          }
+        />
+        <Route 
+          path="/verify-email"
+          element={
+            <PublicRoute>
+              <VerifyEmail />
+            </PublicRoute>
+          }
+        />
         <Route path="/forbidden" element={<Forbidden />} />
 
         {/* Protected routes */}

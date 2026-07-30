@@ -1,4 +1,3 @@
-// components/Navbar.jsx
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FiHeart, FiLogOut, FiMenu, FiX } from 'react-icons/fi';
@@ -21,15 +20,15 @@ const Navbar = () => {
   ];
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50">
+    <nav className="fixed top-0 left-0 right-0 z-50 w-full max-w-full">
       <div className="mx-4 mt-4">
         <div className="max-w-7xl mx-auto bg-white/20 backdrop-blur-xs rounded-2xl border border-gray-100/50 shadow-sm">
-          <div className="pr-4 pl-7 py-3">
+          <div className="pr-4 pl-4 sm:pl-7 py-3">
             <div className="flex items-center justify-between">
               <Link to="/" className="flex items-center space-x-2">
                 <span className="text-xl font-bold text-[#1a1a1a] flex items-center">
-                  <img src="/logo.png" className='w-10 h-10' alt="" />
-                  ttrixia
+                  <img src="/logo.png" className='w-10 h-10' alt="Logo" />
+                  trixia
                 </span>
               </Link>
 

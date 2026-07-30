@@ -1,9 +1,16 @@
-// pages/landing/Landing.jsx
 import React from "react";
 import { Link } from "react-router-dom";
 import { FiArrowRight, FiCheckCircle, FiBarChart, FiZap, FiShield } from "react-icons/fi";
+import { useAuth } from "../../context/AuthContext";
+import AnimatedGridBackground from "../../components/AnimatedGridBackground";
 
 const Landing = () => {
+  const { user } = useAuth(); // Access auth status
+
+  // Dynamic link destination depending on sign-in status
+  const ctaLink = user ? "/ai" : "/signup";
+  const ctaText = user ? "Go to AI Assistant" : "Start Shopping Smarter";
+
   const features = [
     {
       icon: <FiZap className="text-4xl text-[#009FB8]" />,
@@ -13,7 +20,7 @@ const Landing = () => {
     {
       icon: <FiBarChart className="text-4xl text-[#009FB8]" />,
       title: "Smart Comparisons",
-      description: "Compare products based on what mAters to you with detailed specification breakdowns.",
+      description: "Compare products based on what matters to you with detailed specification breakdowns.",
     },
     {
       icon: <FiCheckCircle className="text-4xl text-[#009FB8]" />,
@@ -28,52 +35,33 @@ const Landing = () => {
   ];
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-linear-to-br from-gray-50 via-white to-gray-50">
-      {/* Animated Grid Background */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div
-          className="absolute -left-15 -top-15 animate-[moveGrid_25s_linear_infinite]"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(40, 100px)",
-            gridAutoRows: "100px",
-          }}
-        >
-          {Array.from({ length: 1200 }).map((_, i) => (
-            <div
-              key={i}
-              style={{
-                backgroundColor:
-                  Math.random() > 0.5
-                    ? `hsla(${Math.random() * 360}, 80%, 60%, 0.08)`
-                    : "transparent",
-              }}
-            />
-          ))}
-        </div>
-      </div>
+    // Added w-full max-w-full to prevent grid spillage
+    <div className="relative min-h-screen w-full max-w-full overflow-x-hidden bg-linear-to-br from-gray-50 via-white to-gray-50">
+      <AnimatedGridBackground />
 
       {/* Content */}
-      <div className="relative z-10">
+      <div className="relative z-10 w-full">
         {/* Hero Section */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-42 pb-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-36 md:pt-42 pb-20">
           <div className="text-center mb-16">
             
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-serif-brand font-bold text-[#1a1a1a] mb-6 leading-tight">
-              Shop Smarter with
-              <span className="bg-linear-to-r from-[#009FB8] to-[#006b7d] bg-clip-text text-transparent"> AI</span>
+            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-serif-brand font-bold text-[#1a1a1a] mb-6 leading-tight wrap-break-word">
+              Shop Smarter with{" "}
+              <span className="bg-linear-to-r from-[#009FB8] to-[#006b7d] bg-clip-text text-transparent">
+                Atrixia AI
+              </span>
             </h1>
             
-            <p className="text-lg md:text-xl text-[#666666] max-w-3xl mx-auto mb-10 leading-relaxed">
+            <p className="text-base sm:text-lg md:text-xl text-[#666666] max-w-3xl mx-auto mb-10 leading-relaxed">
               Let Atrixia analyze thousands of products and give you personalized recommendations with detailed explanations. Make better purchasing decisions in minutes, not hours.
             </p>
             
             <div className="flex flex-col sm:flex-row justify-center gap-4">
               <Link
-                to="/signup"
+                to={ctaLink}
                 className="inline-flex items-center justify-center gap-2 bg-linear-to-r from-[#009FB8] to-[#006b7d] text-white px-8 py-4 rounded-2xl font-semibold hover:shadow-lg hover:shadow-[#009FB8]/30 transition border border-[#009FB8]/50"
               >
-                Start Shopping Smarter
+                {ctaText}
                 <FiArrowRight className="text-lg" />
               </Link>
               <Link
@@ -102,7 +90,7 @@ const Landing = () => {
               {features.map((feature, idx) => (
                 <div
                   key={idx}
-                  className="bg-white/80 backdrop-blur-md p-8 rounded-2xl shadow-sm border border-gray-200/50 hover:shadow-lg hover:border-[#009FB8]/30 hover:-translate-y-1 transition duration-300 group"
+                  className="bg-white/80 backdrop-blur-md p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-200/50 hover:shadow-lg hover:border-[#009FB8]/30 hover:-translate-y-1 transition duration-300 group"
                 >
                   <div className="mb-5 inline-block p-3 bg-[#009FB8]/10 rounded-xl group-hover:bg-[#009FB8]/20 transition">
                     {feature.icon}
@@ -121,18 +109,19 @@ const Landing = () => {
 
         {/* CTA Section */}
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-          <div className="bg-white/80 backdrop-blur-md rounded-3xl shadow-lg border border-gray-200/50 p-12 md:p-16 text-center">
-            <h2 className="text-3xl md:text-4xl font-serif-brand font-bold text-[#1a1a1a] mb-4">
+          {/* Reduced padding on mobile (p-6 sm:p-12 md:p-16) to prevent container overflow */}
+          <div className="bg-white/80 backdrop-blur-md rounded-3xl shadow-lg border border-gray-200/50 p-6 sm:p-12 md:p-16 text-center">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-serif-brand font-bold text-[#1a1a1a] mb-4">
               Ready to shop smarter?
             </h2>
-            <p className="text-[#666666] text-lg mb-8 max-w-2xl mx-auto">
+            <p className="text-[#666666] text-base sm:text-lg mb-8 max-w-2xl mx-auto">
               Join thousands of users who are making better purchasing decisions with Atrixia's AI-powered recommendations.
             </p>
             <Link
-              to="/signup"
-              className="inline-flex items-center justify-center gap-2 bg-linear-to-r from-[#009FB8] to-[#006b7d] text-white px-10 py-4 rounded-2xl font-semibold hover:shadow-lg hover:shadow-[#009FB8]/30 transition border border-[#009FB8]/50"
+              to={ctaLink}
+              className="inline-flex items-center justify-center gap-2 bg-linear-to-r from-[#009FB8] to-[#006b7d] text-white px-8 sm:px-10 py-4 rounded-2xl font-semibold hover:shadow-lg hover:shadow-[#009FB8]/30 transition border border-[#009FB8]/50"
             >
-              Get Started Now
+              {user ? "Launch AI Assistant" : "Get Started Now"}
               <FiArrowRight />
             </Link>
           </div>

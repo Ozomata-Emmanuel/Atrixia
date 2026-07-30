@@ -1,13 +1,13 @@
-// components/Footer.jsx
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { FiGithub, FiTwitter, FiLinkedin } from 'react-icons/fi';
 
 const Footer = () => {
   return (
-    <footer className="relative bg-linear-to-br from-gray-50 via-white to-gray-50 border-t border-gray-200/30">
-      {/* Glassmorphic background overlay */}
-      <div className="absolute inset-0 backdrop-blur-3xl pointer-events-none">
+    // Added overflow-hidden and w-full to contain background glows
+    <footer className="relative w-full overflow-hidden bg-linear-to-br from-gray-50 via-white to-gray-50 border-t border-gray-200/30">
+      {/* Glassmorphic background overlay clipped to bounds */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#009FB8]/5 rounded-full blur-3xl" />
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-[#009FB8]/5 rounded-full blur-3xl" />
       </div>
@@ -21,7 +21,7 @@ const Footer = () => {
           {/* Brand */}
           <div className="lg:col-span-2">
             <h3 className="text-2xl font-serif-brand font-bold text-[#1a1a1a] mb-3">
-              Attrix<span className="text-[#009FB8]">ia</span>
+              Atrix<span className="text-[#009FB8]">ia</span>
             </h3>
             <p className="text-[#666666] text-sm leading-relaxed mb-6">
               Your AI-powered shopping assistant that helps you make smarter product decisions with personalized recommendations and intelligent filtering.
@@ -115,9 +115,9 @@ const Footer = () => {
         <div className="h-px bg-linear-to-r from-transparent via-gray-300 to-transparent mb-8" />
 
         {/* Copyright */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
           <p className="text-sm text-[#999999] font-medium">
-            &copy; {new Date().getFullYear()} Attrixia. All rights reserved.
+            &copy; {new Date().getFullYear()} Atrixia. All rights reserved.
           </p>
           <div className="flex items-center gap-6">
             <Link to="/privacy" className="text-xs text-[#999999] hover:text-[#009FB8] transition">

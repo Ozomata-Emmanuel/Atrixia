@@ -1304,7 +1304,7 @@ const AIPage = () => {
                 className="w-10 mb-1.5 h-10 bg-gray-90"
               />
 
-              <span className="text-2xl font-bold text-[#1a1a1a]">ttrixia</span>
+              <span className="text-2xl font-bold text-[#1a1a1a]">trixia</span>
             </Link>
             <button
               onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -1412,9 +1412,9 @@ const AIPage = () => {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col relative z-10 min-w-0">
+      <div className="flex-1 flex flex-col relative z-10 min-w-0 h-full">
         {/* Header */}
-        <div className="bg-linear-to-b from-white/50 via-white/30 to-[#0000] p-4 flex items-center gap-3 justify-between">
+        <div className="bg-linear-to-b from-white/50 via-white/30 to-[#0000] p-4 flex items-center gap-3 justify-between shrink-0">
           <div className="flex items-center gap-3">
             {/* Desktop Sidebar Toggle */}
             <img
@@ -1424,7 +1424,7 @@ const AIPage = () => {
               className={`w-10 h-10 mb-1.5 hidden md:block bg-gray-90 ${!isSidebarCollapsed ? "md:hidden" : ""}`}
             />
             <div
-              className={`flex items-center bg-white/70 rounded-full px-3  ${!isSidebarCollapsed ? "hidden" : ""}`}
+              className={`items-center hidden md:flex bg-white/70 rounded-full px-3  ${!isSidebarCollapsed ? "hidden" : ""}`}
             >
               <button
                 onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -1443,13 +1443,18 @@ const AIPage = () => {
               </button>
             </div>
 
-            {/* Mobile Menu Button */}
-            <button
-              onClick={() => setIsSidebarOpen(true)}
-              className="md:hidden items-center justify-center text-[#666666] hover:text-[#009FB8] hover:bg-white/50 cursor-pointer transition rounded-full p-3"
-            >
-              <FiMenu className="text-2xl" />
-            </button>
+            {/* Mobile Menu and New chat Button */}
+            <div classname="flex items-center gap-1">
+              <button
+                onClick={() => setIsSidebarOpen(true)}
+                className="md:hidden items-center justify-center text-[#666666] hover:text-[#009FB8] hover:bg-white/50 cursor-pointer transition rounded-full p-3"
+              >
+                <FiMenu className="text-2xl" />
+              </button>
+              <button onClick={startNewChat} className="md:hidden items-center justify-center text-[#666666] hover:text-[#25c9e2] hover:bg-white/50 cursor-pointer transition rounded-full p-3">
+                <BiMessageSquareAdd className="text-2xl" />
+              </button>
+            </div>
           </div>
 
           {/* Preferences Button - Right side of header */}
@@ -1697,13 +1702,8 @@ const AIPage = () => {
 
         {/* Input Container with Filters - Only show when no messages */}
         {messages.length === 0 && (
-          <div
-            className={`
-            transition-all duration-500 ease-in-out mx-5 md:mx-10
-            md:absolute md:inset-x-0 md:bottom-[25%] md:flex md:justify-center md:px-4
-          `}
-          >
-            <div className="md:w-full md:max-w-4xl">
+          <div className="shrink-0 px-4 py-4 bg-linear-to-t from-white/50 via-white/30 to-transparent">
+            <div className="max-w-3xl mx-auto">
               {/* Filter Chips */}
               {customFilters.length > 0 && (
                 <div className="pb-2">
@@ -1730,34 +1730,32 @@ const AIPage = () => {
               )}
 
               {/* Input Field */}
-              <div className="pb-4">
-                <div className="relative flex items-center bg-white/50 backdrop-blur-sm rounded-2xl border-2 border-gray-200/70 focus-within:border-[#009FB8]/50 focus-within:ring-2 focus-within:ring-[#009FB8]/20 focus-within:shadow-lg transition">
-                  <button
-                    onClick={openDrawer}
-                    className="absolute left-3 text-[#999999] hover:text-[#009FB8] transition p-1 hover:bg-white/50 rounded-lg"
-                  >
-                    <FiPlus className="text-xl" />
-                  </button>
-                  <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-                    placeholder="Ask Attrixia Agent (e.g., Find me a gaming laptop)"
-                    className="w-full pl-12 pr-12 py-3.5 bg-transparent focus:outline-none text-[#333333] placeholder-[#999999]"
-                  />
-                  <button
-                    onClick={handleSendMessage}
-                    className={`absolute right-3 transition p-2 rounded-full ${
-                      input.trim() || customFilters.length > 0
-                        ? "text-[#009FB8] cursor-pointer hover:text-[#006b7d] bg-[#009FB8]/10"
-                        : "text-[#949494] cursor-not-allowed bg-[#dad8d862]"
-                    }`}
-                    disabled={!input.trim() && customFilters.length === 0}
-                  >
-                    <IoArrowUp className={`text-xl `} />
-                  </button>
-                </div>
+              <div className="relative flex items-center bg-white/70 backdrop-blur-sm rounded-2xl border-2 border-gray-200/70 focus-within:border-[#009FB8]/50 focus-within:ring-2 focus-within:ring-[#009FB8]/20 focus-within:shadow-lg transition">
+                <button
+                  onClick={openDrawer}
+                  className="absolute left-3 text-[#999999] hover:text-[#009FB8] transition p-1 hover:bg-white/50 rounded-lg"
+                >
+                  <FiPlus className="text-xl" />
+                </button>
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
+                  placeholder="Ask Atrixia Agent (e.g., Find me a gaming laptop)"
+                  className="w-full pl-12 pr-12 py-3.5 bg-transparent focus:outline-none text-[#333333] placeholder-[#999999]"
+                />
+                <button
+                  onClick={handleSendMessage}
+                  className={`absolute right-3 transition p-2 rounded-full ${
+                    input.trim() || customFilters.length > 0
+                      ? "text-[#009FB8] cursor-pointer hover:text-[#006b7d] bg-[#009FB8]/10"
+                      : "text-[#949494] cursor-not-allowed bg-[#dad8d862]"
+                  }`}
+                  disabled={!input.trim() && customFilters.length === 0}
+                >
+                  <IoArrowUp className={`text-xl `} />
+                </button>
               </div>
             </div>
           </div>
