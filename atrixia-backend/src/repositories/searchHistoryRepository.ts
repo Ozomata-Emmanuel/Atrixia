@@ -1,6 +1,6 @@
 import { db } from '../db';
 import { searches } from '../db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 import { ISearchSessionRepository } from '../lib/ai/db/db';
 import { SearchSessionRecord } from '../lib/ai/memory/history';
 
@@ -26,8 +26,7 @@ export class SearchHistoryRepository implements ISearchSessionRepository {
 
   /**
    * Persist a search session.
-   * Uses INSERT ... ON CONFLICT DO NOTHING so retries (e.g. from SSE + non-stream
-   * both calling save for the same id) are silently ignored.
+   * Uses INSERT ... ON CONFLICT DO NOTHING — safe to call multiple times for same id.
    */
   async save(session: SearchSessionRecord & { userId?: string; results?: any }): Promise<void> {
     const userId = session.userId || '00000000-0000-0000-0000-000000000000';
@@ -43,12 +42,11 @@ export class SearchHistoryRepository implements ISearchSessionRepository {
         createdAt: session.timestamp,
       })
       .onConflictDoNothing();
-    console.log(`[SearchHistoryRepository] Saved search "${session.query}" for user ${userId}`);
+    console.log(`[SearchHistoryRepository] Saved search "${session.query.slice(0, 50)}" for user ${userId}`);
   }
 
   /**
-   * List last 20 searches for a user.
-   * Returns a summary row (no full results payload) for the history list view.
+   * List last 20 searches for a user (sidebar view — lightweight, no full results).
    */
   async listByUser(userId: string): Promise<(SearchSessionRecord & { results?: any })[]> {
     const records = await db
@@ -60,9 +58,6 @@ export class SearchHistoryRepository implements ISearchSessionRepository {
 
     return records.map((record) => {
       const results = record.results ?? null;
-      // Return a lightweight summary: query, timestamp, count, and top-level
-      // report fields (executiveSummary, bestOverall) so the history list is
-      // actually useful without sending the full product array.
       const summary = results && typeof results === 'object' && !Array.isArray(results)
         ? {
             executiveSummary: (results as any).executiveSummary ?? null,
@@ -79,5 +74,24 @@ export class SearchHistoryRepository implements ISearchSessionRepository {
         summary,
       };
     });
+  }
+
+  /**
+   * Delete a single search by ID.
+   * Only deletes if it belongs to the given userId (ownership check).
+   */
+  async deleteById(id: string, userId: string): Promise<void> {
+    await db
+      .delete(searches)
+      .where(and(eq(searches.id, id), eq(searches.userId, userId)));
+    console.log(`[SearchHistoryRepository] Deleted search ${id} for user ${userId}`);
+  }
+
+  /**
+   * Delete all searches for a user — clears their full history.
+   */
+  async deleteAllByUser(userId: string): Promise<void> {
+    await db.delete(searches).where(eq(searches.userId, userId));
+    console.log(`[SearchHistoryRepository] Cleared all history for user ${userId}`);
   }
 }

@@ -1,0 +1,77 @@
+◇ injected env (10) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+
+─── Intent Extraction Smoke Test ───
+
+Query:       "redmi phone"
+SearchTerms: redmi smartphone  (joins to → "redmi smartphone")
+ProductType: smartphone
+Brand:       Xiaomi
+Budget:      none
+Warning:     none
+Summary:     Searching for redmi smartphone
+
+Query:       "I want to buy a Redmi phone"
+SearchTerms: redmi smartphone  (joins to → "redmi smartphone")
+ProductType: smartphone
+Brand:       Xiaomi
+Budget:      none
+Warning:     none
+Summary:     Searching for redmi smartphone
+
+Query:       "HP laptop under $500"
+SearchTerms: hp laptop  (joins to → "hp laptop")
+ProductType: laptop
+Brand:       HP
+Budget:      500
+Warning:     none
+Summary:     Searching for hp laptop under 500
+
+Query:       "wireless headphones"
+SearchTerms: headphones wireless  (joins to → "headphones wireless")
+ProductType: headphones
+Brand:       none
+Budget:      none
+Warning:     none
+Summary:     Searching for headphones wireless
+
+Query:       "I awant to buy a mug"
+SearchTerms: awant buy mug  (joins to → "awant buy mug")
+ProductType: general
+Brand:       none
+Budget:      none
+Warning:     none
+Summary:     Searching for awant buy mug
+
+Query:       "Samsung Galaxy S24"
+SearchTerms: samsung smartphone  (joins to → "samsung smartphone")
+ProductType: smartphone
+Brand:       Samsung
+Budget:      none
+Warning:     none
+Summary:     Searching for samsung smartphone
+
+Query:       "cheap laptop under ₦200000"
+SearchTerms: laptop  (joins to → "laptop")
+ProductType: laptop
+Brand:       none
+Budget:      200000
+Warning:     none
+Summary:     Searching for laptop under 200000
+
+Query:       "something to sit on while coding"
+SearchTerms: chair sit while  (joins to → "chair sit while")
+ProductType: chair
+Brand:       none
+Budget:      none
+Warning:     none
+Summary:     Searching for chair sit while
+
+Query:       "I need a good running shoe"
+SearchTerms: shoe running  (joins to → "shoe running")
+ProductType: shoe
+Brand:       none
+Budget:      none
+Warning:     none
+Summary:     Searching for shoe running
+
+DONE

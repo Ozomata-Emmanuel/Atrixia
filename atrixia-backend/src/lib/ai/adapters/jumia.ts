@@ -8,7 +8,37 @@ export class JumiaAdapter implements IMarketplaceAdapter {
 
   async search(query: string, options?: { category?: string; region?: string }): Promise<NormalizedProduct[]> {
     const clean = sanitizeQuery(query);
-    const encodedQuery = encodeURIComponent(clean);
+    const firstWord = clean.split(' ')[0];
+    const needsRetry = firstWord && firstWord !== clean && firstWord.length >= 3;
+
+    if (!needsRetry) {
+      // Single-word query — just fetch directly
+      return this._fetchAndParse(clean, options);
+    }
+
+    // Multi-word query: race the full query against the first-word fallback.
+    // Both start at the same time. Whichever returns results first wins.
+    // This avoids waiting for a slow query before trying the shorter one.
+    const [full, short] = await Promise.all([
+      this._fetchAndParse(clean, options).catch(() => [] as NormalizedProduct[]),
+      this._fetchAndParse(firstWord, options).catch(() => [] as NormalizedProduct[]),
+    ]);
+
+    // Prefer full query results; merge with short if we need more
+    if (full.length >= 3) return full;
+    if (short.length >= 3) return short;
+
+    // Merge and dedupe by title if both returned partial results
+    const seen = new Set(full.map(p => p.title.toLowerCase()));
+    const extra = short.filter(p => !seen.has(p.title.toLowerCase()));
+    return [...full, ...extra].slice(0, 8);
+  }
+
+  private async _fetchAndParse(
+    query: string,
+    options?: { category?: string; region?: string }
+  ): Promise<NormalizedProduct[]> {
+    const encodedQuery = encodeURIComponent(query);
     const targetUrl = `https://www.jumia.com.ng/catalog/?q=${encodedQuery}`;
 
     let html: string;
@@ -23,7 +53,7 @@ export class JumiaAdapter implements IMarketplaceAdapter {
           'Cache-Control': 'no-cache',
         },
         redirect: 'follow',
-        signal: AbortSignal.timeout(9_000), // slightly under the 10s manager timeout
+        signal: AbortSignal.timeout(15_000), // parallel calls — effective wait = 15s not 30s
       });
 
       if (!response.ok) {
@@ -129,7 +159,8 @@ export class JumiaAdapter implements IMarketplaceAdapter {
       console.warn(`[JumiaAdapter] No products parsed for query "${query}". HTML snippet:`, html.slice(0, 500));
     }
 
-    return products.slice(0, 3);
+    // Return up to 8 — let the manager's dedup + accessory filter pick the best 3
+    return products.slice(0, 8);
   }
 
   async health(): Promise<'healthy' | 'degraded' | 'offline'> {

@@ -75,24 +75,15 @@ export const createSearch = async (req: AuthRequest, res: Response, next: NextFu
 export const getSearch = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.userId;
-    if (!userId) {
-      throw new AppError('Unauthorized', 401);
-    }
+    if (!userId) throw new AppError('Unauthorized', 401);
 
-    const searchId = req.params.searchId as string;
-    if (!searchId) {
-      throw new AppError('Invalid search ID format', 400);
-    }
+    const searchId = String(req.params.searchId || '');
+    if (!searchId) throw new AppError('Invalid search ID format', 400);
 
     const searchRecord = await searchHistoryRepo.get(searchId);
-    if (!searchRecord) {
-      throw new AppError('Search record not found', 404);
-    }
+    if (!searchRecord) throw new AppError('Search record not found', 404);
 
-    res.status(200).json({
-      success: true,
-      data: searchRecord,
-    });
+    res.status(200).json({ success: true, data: searchRecord });
   } catch (error) {
     next(error);
   }
@@ -105,9 +96,6 @@ export const getHistory = async (req: AuthRequest, res: Response, next: NextFunc
 
     const list = await searchHistoryRepo.listByUser(userId);
 
-    // Shape the response like a ChatGPT sidebar:
-    // Each item has an id, the query as "title", a short preview, timestamp,
-    // and the top recommendation so the user can see what they found at a glance.
     const data = list.map((item: any) => ({
       id: item.id,
       title: item.query,
@@ -126,6 +114,39 @@ export const getHistory = async (req: AuthRequest, res: Response, next: NextFunc
     }));
 
     res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/search/history/:searchId
+ * Deletes a single search from the user's history.
+ */
+export const deleteSearch = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw new AppError('Unauthorized', 401);
+    const searchId = String(req.params.searchId || '');
+    if (!searchId) throw new AppError('searchId is required', 400);
+    await searchHistoryRepo.deleteById(searchId, userId);
+    res.status(200).json({ success: true, message: 'Search deleted.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/search/history
+ * Clears the user's entire search history.
+ */
+export const clearHistory = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw new AppError('Unauthorized', 401);
+
+    await searchHistoryRepo.deleteAllByUser(userId);
+    res.status(200).json({ success: true, message: 'Search history cleared.' });
   } catch (error) {
     next(error);
   }
@@ -197,8 +218,7 @@ export const getConversation = async (req: AuthRequest, res: Response, next: Nex
   try {
     const userId = req.user?.userId;
     if (!userId) throw new AppError('Unauthorized', 401);
-
-    const { conversationId } = req.params;
+    const conversationId = String(req.params.conversationId || '');
     if (!conversationId) throw new AppError('conversationId is required', 400);
 
     const { ConversationRepository } = await import('../repositories/conversationRepository');
@@ -209,6 +229,29 @@ export const getConversation = async (req: AuthRequest, res: Response, next: Nex
     if (thread.userId && thread.userId !== userId) throw new AppError('Forbidden', 403);
 
     res.status(200).json({ success: true, data: thread });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/search/conversations/:conversationId
+ * Deletes a specific conversation thread (like ChatGPT's individual chat delete).
+ */
+export const deleteConversation = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) throw new AppError('Unauthorized', 401);
+    const conversationId = String(req.params.conversationId || '');
+    if (!conversationId) throw new AppError('conversationId is required', 400);
+
+    const { ConversationRepository } = await import('../repositories/conversationRepository');
+    const convRepo = new ConversationRepository();
+    const thread = await convRepo.get(conversationId);
+    if (thread && thread.userId && thread.userId !== userId) throw new AppError('Forbidden', 403);
+
+    await convRepo.delete(conversationId);
+    res.status(200).json({ success: true, message: 'Conversation deleted.' });
   } catch (error) {
     next(error);
   }

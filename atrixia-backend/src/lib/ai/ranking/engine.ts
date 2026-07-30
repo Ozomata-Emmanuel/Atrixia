@@ -1,5 +1,5 @@
 import { NormalizedProduct } from '../models/product';
-import { normalizePrice, normalizeQuality, normalizeShipping, normalizeSeller, normalizeSentiment } from './scoring';
+import { normalizePrice, normalizeQuality, normalizeShipping, normalizeSeller, relevanceScore } from './scoring';
 import { calculateConfidence } from './confidence';
 
 export interface ScoreBreakdown {
@@ -58,7 +58,8 @@ export class RankingEngine {
       prioritizeShipping?: boolean;
       prioritizeSeller?: boolean;
     },
-    budgetMax?: number | null
+    budgetMax?: number | null,
+    queryTerms?: string[]   // from intent.searchTerms — used for relevance scoring
   ): RankingResult {
     if (products.length === 0) {
       return {
@@ -97,12 +98,21 @@ export class RankingEngine {
       const sSeller   = normalizeSeller(product);
       const sShipping = normalizeShipping(product);
 
-      const overallScore = Math.round(
+      // Relevance multiplier — products that don't match the query get demoted
+      // Score: 100=perfect match, 75=good, 50=partial, 10=likely irrelevant
+      const sRelevance = queryTerms?.length
+        ? relevanceScore(product, queryTerms)
+        : 75;
+      const relevanceMultiplier = sRelevance / 100; // 0.10 to 1.00
+
+      const rawScore =
         priceW   * sPrice   +
         qualityW * sQuality +
         sellerW  * sSeller  +
-        shippingW * sShipping
-      );
+        shippingW * sShipping;
+
+      // Apply relevance: irrelevant product at score 80 → 80 * 0.10 = 8
+      const overallScore = Math.round(rawScore * relevanceMultiplier);
 
       return {
         ...product,
